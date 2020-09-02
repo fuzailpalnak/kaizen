@@ -5,7 +5,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-from kaizen.path.node import StartNode, GoalNode, Node
+from kaizen.map.obstacle import Obstacle
+from kaizen.path.node import StartNode, GoalNode, Node, Vertex
 from kaizen.path.robot import Robot
 from kaizen.utils.numerical import angle_between_vector, vector
 
@@ -14,13 +15,9 @@ show_animation = True
 
 class PathFinder:
     # http://theory.stanford.edu/~amitp/GameProgramming/
-
-    def __init__(self, start: StartNode, goal: GoalNode, intermediate_goal: list):
-        self.start = start
-        self.goal = goal
-        self.goal_collection = intermediate_goal
-
-        self.goal_collection.append(self.goal)
+    def __init__(self, grid, obstacle: Obstacle):
+        self._grid = grid
+        self._obstacle = obstacle
 
         #  INITIAL NAVIGATION SPACE IS SET TO 90 DEG, LATER ON THE PATH FINDER WILL
         #  ADJUST AS PER THE LOCATION OF GOAL NODE
@@ -30,28 +27,50 @@ class PathFinder:
         # THE IDEA IS THAT, NODES USUALLY FOLLOW SUCCESSIVE PATH USE THIS TO OUR ADVANTAGE
         # AND TO MINIMIZE THE SEARCH SPACE.
         # ONLY THOSE NODES ARE EXPLORED WHICH LIE IN THE NAVIGATE_SPACE
-
         self._navigate_space = 90
 
-        self.connectivity_meta = self.node_connectivity()
-        self.pre_compute_goal_heuristics()
-        self.direction = Robot().direction()
+        self._direction = Robot().direction()
 
-    def node_connectivity(self):
+    def node_connectivity(
+        self, start_node: StartNode, goal_node: GoalNode, goal_collection: list
+    ):
         connectivity_meta = OrderedDict()
 
         # ELEMENT FROM 0 th INDEX IS DELETED ON 'del self.goal_collection[0]', WHICH RESULTS IN A GLOBAL DELETE,
         # AND IF 'self.goal_collection'IS COPIED DIRECTLY THEN THE ELEMENTS FROM ITS REFERENCE IS ALSO DELETED, HENCE
         # 'FOR' LOOP IS USED TO CREATE A NEW COPY.
-        connectivity_meta[self.start] = {
-            "connectivity": [goal for goal in self.goal_collection],
-            "distance": self.diagonal(self.goal, self.start),
+
+        # TODO FOR LOOP IS A BAD PRACTICE, REPLACE IT WITH MATRIX OPERATION
+        connectivity_meta[start_node] = {
+            "connectivity": [goal for goal in goal_collection],
+            "distance": self.diagonal(goal_collection[0], start_node)
+            + np.sum(
+                np.array(
+                    [
+                        self.diagonal(goal_collection[i], goal_collection[i + 1])
+                        for i in range(len(goal_collection) - 1)
+                    ]
+                )
+            ),
         }
 
-        for i, goal in enumerate(self.goal_collection):
+        for i, goal in enumerate(goal_collection):
+            if i == len(goal_collection) - 1:
+                distance = 0
+            else:
+                distance = self.diagonal(
+                    goal_collection[i], goal_collection[i + 1 :][0]
+                ) + np.sum(
+                    np.array(
+                        [
+                            self.diagonal(goal_collection[i], goal_collection[i + 1])
+                            for i in range(len(goal_collection[i + 1 :]) - 1)
+                        ]
+                    )
+                )
             connectivity_meta[goal] = {
-                "connectivity": [goal for goal in self.goal_collection[i + 1 :]],
-                "distance": self.diagonal(self.goal, goal),
+                "connectivity": [goal for goal in goal_collection[i + 1 :]],
+                "distance": distance,
             }
         return connectivity_meta
 
@@ -101,7 +120,13 @@ class PathFinder:
     def manhattan(goal: GoalNode, node: Node):
         return abs(goal.x - node.x) + abs(goal.y - node.y)
 
-    def find_path(self, grid, obstacle_map, space_threshold: float):
+    def path(
+        self,
+        start: Vertex,
+        goal: Vertex,
+        intermediate_goal: list,
+        space_threshold: float,
+    ):
         raise NotImplementedError
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
@@ -113,51 +138,8 @@ class PathFinder:
     def final_path(self, grid, goal: GoalNode, closed_set: dict):
         raise NotImplementedError
 
-    @classmethod
-    def navigate_from_list(cls, navigate_vertices: list):
-        """
-        INDEX [0] WILL BE ASSIGNED AS START AND INDEX [-1] WILL BE ASSIGNED AS GOAL AND REMAINING WILL BE CONSIDERED
-        AS INTERMEDIATE GOALS IF ANY
-
-        :param navigate_vertices:
-        :return:
-        """
-
-        start_node = None
-        goal_node = None
-        intermediate_goal = list()
-
-        for index, vertex in enumerate(navigate_vertices):
-            if index == 0:
-                start_node = StartNode(
-                    vertex.x,
-                    vertex.y,
-                    0.0,
-                    -1,
-                )
-            elif index == len(vertex) - 1:
-                goal_node = GoalNode(
-                    vertex.x,
-                    vertex.y,
-                    0.0,
-                    -1,
-                )
-            else:
-                goal = GoalNode(
-                    vertex.x,
-                    vertex.y,
-                    0.0,
-                    -1,
-                    is_intermediate=True,
-                )
-                intermediate_goal.append(goal)
-        return cls(start_node, goal_node, intermediate_goal)
-
-    @classmethod
-    def navigate_from_start_and_goal_with_intermediate(
-        cls, start, goal, intermediate_goals
-    ):
-
+    @staticmethod
+    def generate_nodes(start: Vertex, goal: Vertex, intermediate_goals: list):
         start_node = StartNode(
             start.x,
             start.y,
@@ -181,42 +163,32 @@ class PathFinder:
                 is_intermediate=True,
             )
             intermediate_goal.append(goal)
-        return cls(start_node, goal_node, intermediate_goal)
-
-    @classmethod
-    def navigate_from_start_and_goal(cls, start, goal):
-
-        start_node = StartNode(
-            start.x,
-            start.y,
-            0.0,
-            -1,
-        )
-        goal_node = GoalNode(
-            goal.x,
-            goal.y,
-            0.0,
-            -1,
-        )
-        intermediate_goal = list()
-        return cls(start_node, goal_node, intermediate_goal)
+        intermediate_goal.append(goal_node)
+        return start_node, goal_node, intermediate_goal
 
 
 class AStar(PathFinder):
-    def __init__(self, start: StartNode, goal: GoalNode, intermediate_goal: list):
-        super().__init__(start, goal, intermediate_goal)
+    def __init__(self, grid, obstacle: Obstacle):
+        super().__init__(grid, obstacle)
 
     def pre_compute_goal_heuristics(self):
         pass
 
-    def find_path(self, grid, obstacle_map, space_threshold=5):
+    def path(
+        self, start: Vertex, goal: Vertex, intermediate_goal: list, space_threshold=5
+    ):
+        start, goal, goal_collection = self.generate_nodes(
+            start, goal, intermediate_goal
+        )
+
+        connectivity_meta = self.node_connectivity(start, goal, goal_collection)
+
         open_set, closed_set = dict(), dict()
-        open_set[grid.grid_index(self.start.x, self.start.y)] = self.start
+        open_set[self._grid.grid_index(start.x, start.y)] = start
 
-        n_goal = self.goal_collection[0]
-
-        self.start.parent_node = self.start
-        parent_node = self.start
+        n_goal = goal_collection[0]
+        start.parent_node = start
+        parent_node = start
 
         # TODO SOLVE THE PROBLEM OF DIRECTION TO CHOOSE FOR NAVIGATION
         # TODO HEURISTIC FOR MULTI GOAL
@@ -229,7 +201,9 @@ class AStar(PathFinder):
             grid_id = min(
                 open_set,
                 key=lambda o: open_set[o].cost
-                + self.calc_heuristic(n_goal, open_set[o]),
+                + self.calc_heuristic(
+                    n_goal, open_set[o], connectivity_meta=connectivity_meta
+                ),
             )
 
             current = open_set[grid_id]
@@ -239,13 +213,13 @@ class AStar(PathFinder):
                 # VEC(start -> previous_goal).dot(VEC(start -> goal))
                 # VEC(start -> previous_goal).dot(VEC(start -> goal)) is nothing but self.navigate_space
 
-                if self.search_space(n_goal, self.start, current) > self.navigate_space:
+                if self.search_space(n_goal, start, current) > self.navigate_space:
                     del open_set[grid_id]
                     continue
 
             # show graph
             if show_animation:  # pragma: no cover
-                plt.plot(grid.x_pos(current.x), grid.y_pos(current.y), "xc")
+                plt.plot(self._grid.x_pos(current.x), self._grid.y_pos(current.y), "xc")
                 # for stopping simulation with the esc key.
                 plt.gcf().canvas.mpl_connect(
                     "key_release_event",
@@ -266,14 +240,14 @@ class AStar(PathFinder):
                     parent_node = n_goal
 
                     # REMOVE THE GOAL FROM COLLECTION AS IT HAS BEEN FOUND
-                    del self.goal_collection[0]
+                    del goal_collection[0]
 
                     # GET THE NEW GOAL
-                    n_goal = self.goal_collection[0]
+                    n_goal = goal_collection[0]
 
                     # CALCULATE THE SEARCH SPACE FOR NEW GOAL
                     self.navigate_space = self.search_space(
-                        n_goal, self.start, intermediate_goal
+                        n_goal, start, intermediate_goal
                     )
 
                     # [USE CASE SPECIFIC]
@@ -292,17 +266,17 @@ class AStar(PathFinder):
             closed_set[grid_id] = current
 
             # EXPAND IN 8 DIRECTION, DIAGONAL WEIGHT IS math.sqrt(2) AND 1 OTHERWISE
-            for i, _ in enumerate(self.direction):
+            for i, _ in enumerate(self._direction):
                 node = Node(
-                    current.x + self.direction[i][0],
-                    current.y + self.direction[i][1],
-                    current.cost + self.direction[i][2],
+                    current.x + self._direction[i][0],
+                    current.y + self._direction[i][1],
+                    current.cost + self._direction[i][2],
                     grid_id,
                 )
-                new_node_grid_id = grid.grid_index(node.x, node.y)
+                new_node_grid_id = self._grid.grid_index(node.x, node.y)
 
                 # SKIP NODE WHEN OBSTACLE ENCOUNTERED
-                if not self.obstacle_check(grid, obstacle_map, node):
+                if not self.obstacle_check(self._grid, self._obstacle.map, node):
                     continue
 
                 # SKIP IF MARKED VISITED
@@ -326,17 +300,18 @@ class AStar(PathFinder):
                         # BEST PATH FOUND
                         open_set[new_node_grid_id] = node
 
-        rx, ry = self.final_path(grid, n_goal, closed_set)
+        rx, ry = self.final_path(self._grid, n_goal, closed_set)
 
         return rx, ry
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
-        connectivity = self.connectivity_meta[potential_node.parent_node][
-            "connectivity"
-        ]
+        connectivity_meta = kwargs["connectivity_meta"]
+        connectivity = connectivity_meta[potential_node.parent_node]["connectivity"]
         index_of_goal_node = connectivity.index(goal)
 
         missed_goal_cost = 0
+
+        # TODO BAD HEURISTIC
 
         # [USE CASE SPECIFIC]
         #     WEIGHT THE COST TO GOAL ON THE BASIS OF GOAL NODES MISSED
@@ -356,7 +331,7 @@ class AStar(PathFinder):
             missed_goal_cost += self.diagonal(my_previous_goal, potential_node)
 
             if len(connectivity[:index_of_goal_node]) > 1:
-                missed_goal_cost += self.connectivity_meta[
+                missed_goal_cost += connectivity_meta[
                     connectivity[:index_of_goal_node][1]
                 ]["distance"]
 
@@ -367,6 +342,12 @@ class AStar(PathFinder):
 
             # for missed_goal in connectivity[:index_of_goal_node]:
             #     missed_goal_cost += self.diagonal(missed_goal, potential_node)
+
+            # COMPUTATION [THREE]
+            #           COMPUTE HOW MANY GOALS WERE MISSED
+            #           d1 = FIRST GOAL MISSED i.e GOAL MISSED[0] -> POTENTIAL NODE
+            #           d2 = GOAL MISSED[1] -> GOAL MISSED[2] -> .... -> GOAL MISSED[n]
+            #           d = d1 + d2
 
         return self.diagonal(goal, potential_node) + (
             weight_missed_goal_cost * missed_goal_cost
