@@ -337,9 +337,13 @@ class AStar(PathFinder):
         index_of_goal_node = connectivity.index(goal)
 
         missed_goal_cost = 0
-        weight_missed_goal_cost = 1
 
         # [USE CASE SPECIFIC]
+        #     WEIGHT THE COST TO GOAL ON THE BASIS OF GOAL NODES MISSED
+        #     w = EXP(GOALS HAVE TO TRAVEL TO GET TO THE CURRENT GOAL)
+
+        weight_missed_goal_cost = np.exp(index_of_goal_node)
+
         if index_of_goal_node != 0:
             # NOTE TO SELF - DON'T THINK THIS IS AN ADMISSIBLE HEURISTIC
             # RETHINK HEURISTIC TO MAKE IT ADMISSIBLE-
@@ -348,17 +352,19 @@ class AStar(PathFinder):
             #           d = DISTANCE(POTENTIAL NODE -> GOAL MISSED[0])
             #           d = d + DISTANCE(FROM GOAL MISSED[0] to GOAL MISSED[-1])
 
+            my_previous_goal = connectivity[:index_of_goal_node][0]
+            missed_goal_cost += self.diagonal(my_previous_goal, potential_node)
+
+            if len(connectivity[:index_of_goal_node]) > 1:
+                missed_goal_cost += self.connectivity_meta[connectivity[:index_of_goal_node][1]]["distance"]
+
             # COMPUTATION [TWO]
             #           COMPUTE HOW MANY GOALS WERE MISSED
             #           d = SUM([DISTANCE(GOAL_MISSED, POTENTIAL NODE)
             #           for GOAL_MISSED connectivity[:index_of_goal_node]])
-            #           WEIGHT THE COST TO GOAL ON THE BASIS OF GOAL NODES MISSED
-            #           w = EXP(GOALS HAVE TO TRAVEL TO GET TO THE CURRENT GOAL)
 
-            weight_missed_goal_cost = np.exp(index_of_goal_node)
-
-            for missed_goal in connectivity[:index_of_goal_node]:
-                missed_goal_cost += self.diagonal(missed_goal, potential_node)
+            # for missed_goal in connectivity[:index_of_goal_node]:
+            #     missed_goal_cost += self.diagonal(missed_goal, potential_node)
 
         return self.diagonal(goal, potential_node) + (
             weight_missed_goal_cost * missed_goal_cost
