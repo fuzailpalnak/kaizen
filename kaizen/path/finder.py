@@ -5,7 +5,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-from kaizen.path.nodes import StartNode, GoalNode, Node
+from kaizen.path.node import StartNode, GoalNode, Node
 from kaizen.path.robot import Robot
 from kaizen.utils.numerical import angle_between_vector, vector
 
@@ -356,7 +356,9 @@ class AStar(PathFinder):
             missed_goal_cost += self.diagonal(my_previous_goal, potential_node)
 
             if len(connectivity[:index_of_goal_node]) > 1:
-                missed_goal_cost += self.connectivity_meta[connectivity[:index_of_goal_node][1]]["distance"]
+                missed_goal_cost += self.connectivity_meta[
+                    connectivity[:index_of_goal_node][1]
+                ]["distance"]
 
             # COMPUTATION [TWO]
             #           COMPUTE HOW MANY GOALS WERE MISSED

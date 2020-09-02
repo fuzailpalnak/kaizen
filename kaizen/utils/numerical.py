@@ -80,7 +80,7 @@ def get_center_of_mass(x, y):
     return np.mean(x), np.mean(y)
 
 
-def get_perpendicular_point(start: tuple, end:tuple, offset=10):
+def get_perpendicular_point(start: tuple, end: tuple, offset=10):
     """
     https://stackoverflow.com/questions/133897/how-do-you-find-a-point-at-a-given-perpendicular-distance-from-a-line?rq=1
 

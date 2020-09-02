@@ -8,8 +8,8 @@ from shapely.geometry import Polygon, mapping
 
 
 class Obstacle:
-    def __init__(self, obstacle_position):
-        self.obstacle_position = obstacle_position
+    def __init__(self, map):
+        self.map = map
 
     @classmethod
     def from_polygon(cls, grid, polygon: fiona.collection, extend_boundary_pixel: 2):
@@ -21,7 +21,9 @@ class Obstacle:
         :param extend_boundary_pixel:
         :return:
         """
-        extent = np.zeros([grid.y_width, grid.x_width], np.uint8)  # create a single channel 200x200 pixel black image
+        extent = np.zeros(
+            [grid.y_width, grid.x_width], np.uint8
+        )  # create a single channel 200x200 pixel black image
 
         for i, feature in enumerate(polygon):
             if feature["type"] == "MultiPolygon":
@@ -31,18 +33,26 @@ class Obstacle:
                 boundary_coordinates = mapping(Polygon(sub_coordinate).boundary)[
                     "coordinates"
                 ]
-                corner_points = [grid.to_pixel_position(bo[0], bo[1]) for bo in boundary_coordinates]
+                corner_points = [
+                    grid.to_pixel_position(bo[0], bo[1]) for bo in boundary_coordinates
+                ]
                 corner_points = np.array(corner_points[:-1], np.int32)
 
                 # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
-                cv2.drawContours(extent, [corner_points], 0, color=(255, 255, 255), thickness=extend_boundary_pixel)
+                cv2.drawContours(
+                    extent,
+                    [corner_points],
+                    0,
+                    color=(255, 255, 255),
+                    thickness=extend_boundary_pixel,
+                )
                 cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
 
-        obstacle_position = (extent >= 255)
-        return cls(obstacle_position=obstacle_position.T)
+        map = extent >= 255
+        return cls(map=map.T)
 
     def animate_obstacle(self):
-        x, y = np.where(self.obstacle_position == True)
+        x, y = np.where(self.map == True)
         plt.plot(x, y, ".k")
 
     @staticmethod
@@ -67,7 +77,7 @@ class Obstacle:
 
     @staticmethod
     def obstacle_mesh(grid):
-        mx, my = np.mgrid[0: grid.x_width, 0: grid.y_width]
+        mx, my = np.mgrid[0 : grid.x_width, 0 : grid.y_width]
         mx = (mx * grid.resolution) + grid.minx
         my = (my * grid.resolution) + grid.miny
         return mx, my
