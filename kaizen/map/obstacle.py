@@ -8,11 +8,11 @@ from shapely.geometry import Polygon, mapping
 
 
 class Obstacle:
-    def __init__(self, map):
-        self.map = map
+    def __init__(self, obs_map):
+        self.obs_map = obs_map
 
     @classmethod
-    def from_polygon(cls, grid, polygon: fiona.collection, extend_boundary_pixel: 2):
+    def from_polygon(cls, grid, polygon: fiona.collection, extend_boundary_pixel: int):
         """
         GENERATE OBSTACLE MAP FROM SPATIAL GEOMETRY [POLYGON]
 
@@ -48,11 +48,11 @@ class Obstacle:
                 )
                 cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
 
-        map = extent >= 255
-        return cls(map=map.T)
+        obs_map = extent >= 255
+        return cls(obs_map=obs_map.T)
 
     def animate_obstacle(self):
-        x, y = np.where(self.map == True)
+        x, y = np.where(self.obs_map == True)
         plt.plot(x, y, ".k")
 
     @staticmethod

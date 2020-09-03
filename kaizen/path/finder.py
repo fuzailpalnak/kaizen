@@ -31,46 +31,20 @@ class PathFinder:
 
         self._direction = Robot().direction()
 
-    def node_connectivity(
-        self, start_node: StartNode, goal_node: GoalNode, goal_collection: list
-    ):
+    @staticmethod
+    def node_connectivity(start_node: StartNode, goal_collection: list):
         connectivity_meta = OrderedDict()
 
         # ELEMENT FROM 0 th INDEX IS DELETED ON 'del self.goal_collection[0]', WHICH RESULTS IN A GLOBAL DELETE,
         # AND IF 'self.goal_collection'IS COPIED DIRECTLY THEN THE ELEMENTS FROM ITS REFERENCE IS ALSO DELETED, HENCE
         # 'FOR' LOOP IS USED TO CREATE A NEW COPY.
-
-        # TODO FOR LOOP IS A BAD PRACTICE, REPLACE IT WITH MATRIX OPERATION
         connectivity_meta[start_node] = {
             "connectivity": [goal for goal in goal_collection],
-            "distance": self.diagonal(goal_collection[0], start_node)
-            + np.sum(
-                np.array(
-                    [
-                        self.diagonal(goal_collection[i], goal_collection[i + 1])
-                        for i in range(len(goal_collection) - 1)
-                    ]
-                )
-            ),
         }
 
         for i, goal in enumerate(goal_collection):
-            if i == len(goal_collection) - 1:
-                distance = 0
-            else:
-                distance = self.diagonal(
-                    goal_collection[i], goal_collection[i + 1 :][0]
-                ) + np.sum(
-                    np.array(
-                        [
-                            self.diagonal(goal_collection[i], goal_collection[i + 1])
-                            for i in range(len(goal_collection[i + 1 :]) - 1)
-                        ]
-                    )
-                )
             connectivity_meta[goal] = {
                 "connectivity": [goal for goal in goal_collection[i + 1 :]],
-                "distance": distance,
             }
         return connectivity_meta
 
@@ -181,7 +155,7 @@ class AStar(PathFinder):
             start, goal, intermediate_goal
         )
 
-        connectivity_meta = self.node_connectivity(start, goal, goal_collection)
+        connectivity_meta = self.node_connectivity(start, goal_collection)
 
         open_set, closed_set = dict(), dict()
         open_set[self._grid.grid_index(start.x, start.y)] = start
@@ -190,6 +164,7 @@ class AStar(PathFinder):
         start.parent_node = start
         parent_node = start
 
+        previous_goal = n_goal
         # TODO SOLVE THE PROBLEM OF DIRECTION TO CHOOSE FOR NAVIGATION
         # TODO HEURISTIC FOR MULTI GOAL
 
@@ -209,11 +184,15 @@ class AStar(PathFinder):
             current = open_set[grid_id]
 
             if current.parent_index != -1:
-                # VEC(start -> potential).dot(VEC(start -> goal)) lies in between
-                # VEC(start -> previous_goal).dot(VEC(start -> goal))
-                # VEC(start -> previous_goal).dot(VEC(start -> goal)) is nothing but self.navigate_space
+                # VEC(start -> potential).dot(VEC(start -> current_goal)) lies in between
+                # VEC(start -> previous_goal).dot(VEC(start -> current_goal))
+                # VEC(start -> previous_goal).dot(VEC(start -> current_goal)) is nothing but self.navigate_space
 
-                if self.search_space(n_goal, start, current) > self.navigate_space:
+                if (
+                    self.search_space(previous_goal, start, current)
+                    > self.navigate_space
+                    or self.search_space(n_goal, start, current) > self.navigate_space
+                ):
                     del open_set[grid_id]
                     continue
 
@@ -237,6 +216,8 @@ class AStar(PathFinder):
                 else:
                     # INTERMEDIATE GOAL FOUND
                     intermediate_goal = current
+
+                    previous_goal = n_goal
                     parent_node = n_goal
 
                     # REMOVE THE GOAL FROM COLLECTION AS IT HAS BEEN FOUND
@@ -276,7 +257,7 @@ class AStar(PathFinder):
                 new_node_grid_id = self._grid.grid_index(node.x, node.y)
 
                 # SKIP NODE WHEN OBSTACLE ENCOUNTERED
-                if not self.obstacle_check(self._grid, self._obstacle.map, node):
+                if not self.obstacle_check(self._grid, self._obstacle.obs_map, node):
                     continue
 
                 # SKIP IF MARKED VISITED
@@ -311,47 +292,22 @@ class AStar(PathFinder):
 
         missed_goal_cost = 0
 
-        # TODO BAD HEURISTIC
+        # TODO BAD HEURISTIC, CURRENT PROBLEM, COST ASSOCIATED WITH FIRST GOAL IS COMPUTED JUST CONSIDERING
+        #  THE FIRST GOAL AS FINAL GOAL, WHICH CAUSES PROBlEM AS REST POTENTIAL NODES ARE COMPUTED CONSIDERING MISSED
+        #  GOAL WHICH LEADS TO FIRST GOAL NODES TO BE ALWAYS WITH LOW COST
 
         # [USE CASE SPECIFIC]
-        #     WEIGHT THE COST TO GOAL ON THE BASIS OF GOAL NODES MISSED
-        #     w = EXP(GOALS HAVE TO TRAVEL TO GET TO THE CURRENT GOAL)
-
-        weight_missed_goal_cost = np.exp(index_of_goal_node)
-
         if index_of_goal_node != 0:
             # NOTE TO SELF - DON'T THINK THIS IS AN ADMISSIBLE HEURISTIC
             # RETHINK HEURISTIC TO MAKE IT ADMISSIBLE-
 
-            # COMPUTATION [ONE]
-            #           d = DISTANCE(POTENTIAL NODE -> GOAL MISSED[0])
-            #           d = d + DISTANCE(FROM GOAL MISSED[0] to GOAL MISSED[-1])
+            # MISSED_GOAL_COST = HOPS_AWAY_TO MISSED_GOAL * DISTANCE(MISSED_GOAL, POTENTIAL_NODE)
+            for missed_goal in connectivity[:index_of_goal_node]:
+                missed_goal_cost += list(connectivity_meta.keys()).index(
+                    missed_goal
+                ) * self.diagonal(missed_goal, potential_node)
 
-            my_previous_goal = connectivity[:index_of_goal_node][0]
-            missed_goal_cost += self.diagonal(my_previous_goal, potential_node)
-
-            if len(connectivity[:index_of_goal_node]) > 1:
-                missed_goal_cost += connectivity_meta[
-                    connectivity[:index_of_goal_node][1]
-                ]["distance"]
-
-            # COMPUTATION [TWO]
-            #           COMPUTE HOW MANY GOALS WERE MISSED
-            #           d = SUM([DISTANCE(GOAL_MISSED, POTENTIAL NODE)
-            #           for GOAL_MISSED connectivity[:index_of_goal_node]])
-
-            # for missed_goal in connectivity[:index_of_goal_node]:
-            #     missed_goal_cost += self.diagonal(missed_goal, potential_node)
-
-            # COMPUTATION [THREE]
-            #           COMPUTE HOW MANY GOALS WERE MISSED
-            #           d1 = FIRST GOAL MISSED i.e GOAL MISSED[0] -> POTENTIAL NODE
-            #           d2 = GOAL MISSED[1] -> GOAL MISSED[2] -> .... -> GOAL MISSED[n]
-            #           d = d1 + d2
-
-        return self.diagonal(goal, potential_node) + (
-            weight_missed_goal_cost * missed_goal_cost
-        )
+        return self.diagonal(goal, potential_node) + missed_goal_cost
 
     def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
         px = grid.x_pos(node.x)
@@ -371,18 +327,13 @@ class AStar(PathFinder):
         return True
 
     def final_path(self, grid, goal: GoalNode, closed_set: dict):
-        # TODO add similarity matrix
-
-        coords = list()
         rx, ry = [grid.x_pos(goal.x)], [grid.y_pos(goal.y)]
-        coords.append((grid.x_pos(goal.x), grid.y_pos(goal.y)))
         parent_index = goal.parent_index
         while parent_index != -1:
             n = closed_set[parent_index]
 
             rx.append(grid.x_pos(n.x))
             ry.append(grid.y_pos(n.y))
-            coords.append((grid.x_pos(goal.x), grid.y_pos(goal.y)))
 
             parent_index = n.parent_index
         return rx, ry
