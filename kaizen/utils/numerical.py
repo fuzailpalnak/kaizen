@@ -1,6 +1,7 @@
 import math
 
 import numpy as np
+from numpy import dot
 
 
 def unit_vector(vec: tuple):
@@ -111,3 +112,9 @@ def get_perpendicular_point(start: tuple, end: tuple, offset=10):
 
 def vector(p1, p2):
     return p1[0] - p2[0], p1[1] - p2[1]
+
+
+def cosine_similarity(p1, p2, p3):
+    a = vector((p1[0], p1[1]), (p2[0], p2[1]))
+    b = vector((p1[0], p1[1]), (p3[0], p3[1]))
+    return dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))

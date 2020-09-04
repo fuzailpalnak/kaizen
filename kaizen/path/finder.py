@@ -31,20 +31,39 @@ class PathFinder:
 
         self._direction = Robot().direction()
 
-    @staticmethod
-    def node_connectivity(start_node: StartNode, goal_collection: list):
+    def node_connectivity(self, start_node: StartNode, goal_collection: list):
         connectivity_meta = OrderedDict()
 
         # ELEMENT FROM 0 th INDEX IS DELETED ON 'del self.goal_collection[0]', WHICH RESULTS IN A GLOBAL DELETE,
         # AND IF 'self.goal_collection'IS COPIED DIRECTLY THEN THE ELEMENTS FROM ITS REFERENCE IS ALSO DELETED, HENCE
         # 'FOR' LOOP IS USED TO CREATE A NEW COPY.
+        d = self.diagonal(goal_collection[0], start_node)
+        for j in range(len(goal_collection) - 1):
+            d += self.diagonal(goal_collection[j], goal_collection[j + 1])
+
+        my_intermediate_goal = goal_collection[0]
         connectivity_meta[start_node] = {
             "connectivity": [goal for goal in goal_collection],
+            "total_to_goal": d,
+            "my_intermediate_goal": my_intermediate_goal,
         }
 
         for i, goal in enumerate(goal_collection):
+            collection = goal_collection[i + 1 :]
+            if len(collection) == 0:
+                d = 0
+                my_intermediate_goal = None
+
+            else:
+                my_intermediate_goal = collection[0]
+                d = self.diagonal(goal, collection[0])
+                for j in range(len(collection) - 1):
+                    d += self.diagonal(collection[j], collection[j + 1])
+
             connectivity_meta[goal] = {
-                "connectivity": [goal for goal in goal_collection[i + 1 :]],
+                "connectivity": [goal for goal in collection],
+                "total_to_goal": d,
+                "my_intermediate_goal": my_intermediate_goal,
             }
         return connectivity_meta
 
@@ -287,27 +306,24 @@ class AStar(PathFinder):
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
         connectivity_meta = kwargs["connectivity_meta"]
-        connectivity = connectivity_meta[potential_node.parent_node]["connectivity"]
-        index_of_goal_node = connectivity.index(goal)
+        weight = 1
 
-        missed_goal_cost = 0
+        # LOOK FOR THE INTERMEDIATE GOAL OF THE CONSIDERED NODE AND COMPUTE COST ACCORDINGLY
+        # GET MY ACTUAL GOAL -> COMPUTE COST(MY_ACTUAL_GOAL, POTENTIAL_NODE) + COST FROM (MY_ACTUAL_GOAL, TO FINAL GOAL)
+        my_cost_from_intermediate_to_final_goal = 0
+        my_actual_goal = connectivity_meta[potential_node.parent_node][
+            "my_intermediate_goal"
+        ]
 
-        # TODO BAD HEURISTIC, CURRENT PROBLEM, COST ASSOCIATED WITH FIRST GOAL IS COMPUTED JUST CONSIDERING
-        #  THE FIRST GOAL AS FINAL GOAL, WHICH CAUSES PROBlEM AS REST POTENTIAL NODES ARE COMPUTED CONSIDERING MISSED
-        #  GOAL WHICH LEADS TO FIRST GOAL NODES TO BE ALWAYS WITH LOW COST
+        if my_actual_goal.is_intermediate:
+            my_cost_from_intermediate_to_final_goal = connectivity_meta[my_actual_goal][
+                "total_to_goal"
+            ]
 
-        # [USE CASE SPECIFIC]
-        if index_of_goal_node != 0:
-            # NOTE TO SELF - DON'T THINK THIS IS AN ADMISSIBLE HEURISTIC
-            # RETHINK HEURISTIC TO MAKE IT ADMISSIBLE-
+        cost_from_node_to_actual_goal = self.diagonal(my_actual_goal, potential_node)
+        cost = cost_from_node_to_actual_goal + my_cost_from_intermediate_to_final_goal
 
-            # MISSED_GOAL_COST = HOPS_AWAY_TO MISSED_GOAL * DISTANCE(MISSED_GOAL, POTENTIAL_NODE)
-            for missed_goal in connectivity[:index_of_goal_node]:
-                missed_goal_cost += list(connectivity_meta.keys()).index(
-                    missed_goal
-                ) * self.diagonal(missed_goal, potential_node)
-
-        return self.diagonal(goal, potential_node) + missed_goal_cost
+        return weight * cost
 
     def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
         px = grid.x_pos(node.x)
