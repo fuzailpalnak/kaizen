@@ -1,8 +1,7 @@
 import math
-from collections import defaultdict, OrderedDict, namedtuple
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from typing import Any
+import operator
+from collections import defaultdict, namedtuple, OrderedDict
+from types import SimpleNamespace
 
 import fiona
 import networkx as nx
@@ -12,68 +11,147 @@ from shapely.strtree import STRtree
 from scipy import spatial
 from scipy import stats
 
-
-# TODO remove forced parameters and add kwargs
-@dataclass
-class TracePoint:
-    x: Any
-    y: Any
-    uuid: Any
-    track_id: Any
-    log_time: Any
-    car_id: Any
-    v: Any
-
-
-@dataclass
-class Candidate:
-    x: Any
-    y: Any
-    nearest_distance: Any
-    road: field(default_factory=namedtuple)
-    trace_point: field(default_factory=namedtuple)
+from kaizen.matching.data_format import (
+    CandidateCollection,
+    TraceCollection,
+    CandidateData,
+    RoadData,
+    Transition,
+)
 
 
 class Road:
-    def __init__(self, road_tree, road_graph, road_geometry):
-        self._tree = road_tree
-        self._geometry = road_geometry
-        self.graph = road_graph
-        self.shortest_path_traversed_history = defaultdict(list)
+    def __init__(self, road_table):
+        self._road_table = road_table
+
+        self.tree = self.generate_tree()
+        self.graph = self.generate_graph()
 
     def intersection(self, geometry: Polygon):
-        return [
-            road for road in self._tree.query(geometry) if road.intersects(geometry)
-        ]
+        """
+
+        :param geometry:
+        :return:
+        """
+        return [road for road in self.tree.query(geometry) if road.intersects(geometry)]
 
     def geometry(self, fid):
-        return self._geometry[fid]
+        """
+
+        :param fid:
+        :return:
+        """
+        return self._road_table[fid].geometry
+
+    def entry(self, fid):
+        """
+
+        :param fid:
+        :return:
+        """
+        return self._road_table[fid]
+
+    def generate_graph(self):
+        """
+
+        :return:
+        """
+        road_graph = nx.DiGraph()
+        for _, entry in self._road_table.items():
+            intermediate_nodes = list()
+            geometry = entry.geometry
+            line_string_coordinate = geometry["coordinates"]
+            for coordinates in line_string_coordinate[1:-1]:
+                intermediate_nodes.append((coordinates[0], coordinates[1]))
+
+            road_graph.add_edge(
+                u_of_edge=line_string_coordinate[0],
+                v_of_edge=line_string_coordinate[-1],
+                intermediate_nodes=intermediate_nodes,
+                fid=entry.fid,
+                weight=shape(geometry).length,
+            )
+        return road_graph
+
+    def generate_tree(self):
+        """
+
+        :return:
+        """
+        road_geometry = list()
+        for _, entry in self._road_table.items():
+            road_geometry.append(shape(entry.geometry))
+        return STRtree(road_geometry)
 
 
-class TraceStore:
-    def __init__(self, store: defaultdict):
-        self._store = store
+class TransitionTable:
+    def __init__(self):
+        self._transition_table = Transition()
 
-    def __iter__(self):
-        for trace_id, trace in self._store.items():
-            yield trace_id, trace
+    def add_entry(
+        self,
+        previous_candidate: namedtuple,
+        current_candidate: namedtuple,
+        shortest_path,
+        shortest_distance,
+        shortest_road_id,
+        probability,
+    ):
+        """
 
+        :param previous_candidate:
+        :param current_candidate:
+        :param shortest_path:
+        :param shortest_distance:
+        :param shortest_road_id:
+        :param probability:
+        :return:
+        """
+        assert (
+            previous_candidate is not None and current_candidate is not None
+        ), "Expected 'previous_candidate' and 'current_candidate' to be not None"
 
-class Store:
-    pass
+        self._transition_table.add(
+            previous_candidate=previous_candidate,
+            current_candidate=current_candidate,
+            shortest_path=shortest_path,
+            shortest_distance=shortest_distance,
+            shortest_road_id=shortest_road_id,
+            probability=probability,
+        )
+
+    def table(self):
+        return self._transition_table
+
+    def entry(self, previous_candidate: namedtuple, current_candidate: namedtuple):
+        return self._transition_table[
+            self._transition_table.generate_unique_key(
+                previous_candidate, current_candidate
+            )
+        ]
 
 
 class Match:
-    def __init__(self, road: Road, trace_store: TraceStore):
+    def __init__(self, road: Road, trace_store: TraceCollection):
         self._road = road
         self._trace_store = trace_store
 
-    def _get_candidates(self, trace_point: TracePoint):
+        self._transition_table = TransitionTable()
+
+        # TODO effienct way to decide self._max_distance
+        self._max_distance = 5000
+
+    def _get_candidates(self, trace_point: namedtuple):
+        """
+
+        :param trace_point:
+        :return:
+        """
         tr_point = Point(trace_point.x, trace_point.y)
         candidate_roads = self._road.intersection(tr_point.buffer(30))
 
-        candidate_points = list()
-        for candidate in candidate_roads:
+        candidate_points = CandidateData()
+        for idx, candidate in enumerate(candidate_roads):
             # [REFERENCE IN PAPER]
             # Definition 6 (Line Segment Projection): The line segment projection of a point 𝑝 to a road segment
             # 𝑒 is the point 𝑐 on 𝑒 such that 𝑐 = arg 𝑚𝑖𝑛∀ 𝑐𝑖∈𝑒 𝑑𝑖𝑠𝑡(𝑐𝑖, 𝑝) , where 𝑑𝑖𝑠𝑡(𝑐𝑖, 𝑝) returns the distance
@@ -92,26 +170,30 @@ class Match:
 
             # https://gist.github.com/href/1319371
             # https://stackoverflow.com/questions/35282222/in-python-how-do-i-cast-a-class-object-to-a-dict/35282286
-            candidate_points.append(
-                Candidate(
-                    x=project_point.x,
-                    y=project_point.y,
-                    nearest_distance=fraction,
-                    road=namedtuple("road", attr)(**attr),
-                    trace_point=namedtuple("trace", asdict(trace_point))(
-                        **asdict(trace_point)
-                    ),
-                )
+            candidate_points.add(
+                candidate_id=str(trace_point.trace_point_id) + "_" + str(idx),
+                x=project_point.x,
+                y=project_point.y,
+                distance=fraction,
+                road_information={
+                    **attr,
+                    **{
+                        "start": mapping(candidate)["coordinates"][0],
+                        "end": mapping(candidate)["coordinates"][-1],
+                    },
+                },
+                trace_information=trace_point,
             )
+
         return candidate_points
 
-    def _shortest_path_length(
-        self, previous_layer_candidate, current_layer_candidate, path=False
-    ):
-        # TODO OPTIMIZATION DUPLICATE COMPUTATION HAPPENNING HERE
-        if previous_layer_candidate.road.fid == current_layer_candidate.road.fid:
-            # TODO HANDLE WHEN CANDIDATE ARE ON THE SAME ROAD
-            print("j")
+    def _add_intermediate_edge(self, previous_layer_candidate, current_layer_candidate):
+        """
+
+        :param previous_layer_candidate:
+        :param current_layer_candidate:
+        :return:
+        """
 
         previous_candidate_road_projected_point = (
             previous_layer_candidate.x,
@@ -123,98 +205,162 @@ class Match:
         )
 
         if (
-            previous_layer_candidate.nearest_distance != 0
-            and previous_layer_candidate.nearest_distance != 1
+            previous_layer_candidate.distance != 0
+            and previous_layer_candidate.distance != 1
         ):
-            # TODO RENAME WEIGHT TO DISTANCE
             self._road.graph.add_edge(
-                previous_layer_candidate.road.src,
+                previous_layer_candidate.road.start,
                 previous_candidate_road_projected_point,
-                weight=Point(previous_layer_candidate.road.src).distance(
+                weight=Point(previous_layer_candidate.road.start).distance(
                     Point(previous_candidate_road_projected_point)
                 ),
                 fid=previous_layer_candidate.road.fid,
             )
             self._road.graph.add_edge(
                 previous_candidate_road_projected_point,
-                previous_layer_candidate.road.tg,
-                weight=Point(previous_layer_candidate.road.tg).distance(
+                previous_layer_candidate.road.end,
+                weight=Point(previous_layer_candidate.road.end).distance(
                     Point(previous_candidate_road_projected_point)
                 ),
                 fid=previous_layer_candidate.road.fid,
             )
 
         if (
-            current_layer_candidate.nearest_distance != 0
-            and current_layer_candidate.nearest_distance != 1
+            current_layer_candidate.distance != 0
+            and current_layer_candidate.distance != 1
         ):
             self._road.graph.add_edge(
-                current_layer_candidate.road.src,
+                current_layer_candidate.road.start,
                 current_candidate_road_projected_point,
-                weight=Point(current_layer_candidate.road.src).distance(
+                weight=Point(current_layer_candidate.road.start).distance(
                     Point(current_candidate_road_projected_point)
                 ),
                 fid=current_layer_candidate.road.fid,
             )
             self._road.graph.add_edge(
                 current_candidate_road_projected_point,
-                current_layer_candidate.road.tg,
-                weight=Point(current_layer_candidate.road.tg).distance(
+                current_layer_candidate.road.end,
+                weight=Point(current_layer_candidate.road.end).distance(
                     Point(current_candidate_road_projected_point)
                 ),
                 fid=current_layer_candidate.road.fid,
             )
 
-        shortest_distance = nx.astar_path_length(
-            self._road.graph,
-            previous_candidate_road_projected_point,
-            current_candidate_road_projected_point,
-        )
-        if path:
-            shortest_path = defaultdict(list)
+    def _remove_intermediate_edge(
+        self, previous_layer_candidate, current_layer_candidate
+    ):
+        """
 
-            traversed_shortest_path = nx.astar_path(
+        :param previous_layer_candidate:
+        :param current_layer_candidate:
+        :return:
+        """
+
+        previous_candidate_road_projected_point = (
+            previous_layer_candidate.x,
+            previous_layer_candidate.y,
+        )
+        current_candidate_road_projected_point = (
+            current_layer_candidate.x,
+            current_layer_candidate.y,
+        )
+        if (
+            previous_layer_candidate.distance != 0
+            and previous_layer_candidate.distance != 1
+        ):
+            self._road.graph.remove_edge(
+                previous_layer_candidate.road.start,
+                previous_candidate_road_projected_point,
+            )
+            self._road.graph.remove_edge(
+                previous_candidate_road_projected_point,
+                previous_layer_candidate.road.end,
+            )
+
+        if (
+            current_layer_candidate.distance != 0
+            and current_layer_candidate.distance != 1
+        ):
+            self._road.graph.remove_edge(
+                current_layer_candidate.road.start,
+                current_candidate_road_projected_point,
+            )
+            self._road.graph.remove_edge(
+                current_candidate_road_projected_point, current_layer_candidate.road.end
+            )
+
+    def _road_ids_along_shortest_path(self, shortest_path):
+        """
+
+        :param shortest_path:
+        :return:
+        """
+        road_ids = list()
+        for previous, current in zip(shortest_path, shortest_path[1:]):
+            fid = self._road.graph[previous][current]["fid"]
+            if fid not in road_ids:
+                road_ids.append(fid)
+        return road_ids
+
+    def _path_information(self, previous_layer_candidate, current_layer_candidate):
+        """
+
+        :param previous_layer_candidate:
+        :param current_layer_candidate:
+        :return:
+        """
+
+        previous_candidate_road_projected_point = (
+            previous_layer_candidate.x,
+            previous_layer_candidate.y,
+        )
+        current_candidate_road_projected_point = (
+            current_layer_candidate.x,
+            current_layer_candidate.y,
+        )
+
+        if previous_layer_candidate.road.fid == current_layer_candidate.road.fid:
+            if current_layer_candidate.distance <= previous_layer_candidate.distance:
+                # TODO CHANGE self._max_distance
+                shortest_distance = self._max_distance
+                shortest_path = None
+                road_ids_along_shortest_path = None
+            else:
+                shortest_distance = Point(
+                    previous_candidate_road_projected_point
+                ).distance(Point(current_candidate_road_projected_point))
+                shortest_path = [
+                    previous_layer_candidate.road.start,
+                    previous_layer_candidate.road.end,
+                ]
+                road_ids_along_shortest_path = [previous_layer_candidate.road.fid]
+
+        else:
+            self._add_intermediate_edge(
+                previous_layer_candidate, current_layer_candidate
+            )
+
+            shortest_distance = nx.astar_path_length(
                 self._road.graph,
                 previous_candidate_road_projected_point,
                 current_candidate_road_projected_point,
             )
-            for previous, current in zip(
-                traversed_shortest_path, traversed_shortest_path[1:]
-            ):
-                fid = self._road.graph[previous][current]["fid"]
-                if len(shortest_path) == 0:
-                    shortest_path[tuple(traversed_shortest_path)].append(fid)
-                elif fid != shortest_path[tuple(traversed_shortest_path)][-1]:
-                    shortest_path[tuple(traversed_shortest_path)].append(fid)
-                else:
-                    continue
-        else:
-            shortest_path = None
 
-        if (
-            previous_layer_candidate.nearest_distance != 0
-            and previous_layer_candidate.nearest_distance != 1
-        ):
-            self._road.graph.remove_edge(
-                previous_layer_candidate.road.src,
+            shortest_path = nx.astar_path(
+                self._road.graph,
                 previous_candidate_road_projected_point,
-            )
-            self._road.graph.remove_edge(
-                previous_candidate_road_projected_point,
-                previous_layer_candidate.road.tg,
+                current_candidate_road_projected_point,
             )
 
-        if (
-            current_layer_candidate.nearest_distance != 0
-            and current_layer_candidate.nearest_distance != 1
-        ):
-            self._road.graph.remove_edge(
-                current_layer_candidate.road.src, current_candidate_road_projected_point
+            road_ids_along_shortest_path = self._road_ids_along_shortest_path(
+                shortest_path
             )
-            self._road.graph.remove_edge(
-                current_candidate_road_projected_point, current_layer_candidate.road.tg
+
+            self._remove_intermediate_edge(
+                previous_layer_candidate, current_layer_candidate
             )
-        return shortest_distance, shortest_path
+
+        return shortest_distance, shortest_path, road_ids_along_shortest_path
 
     @staticmethod
     def _observation_probability(x, y, trace_point):
@@ -252,32 +398,44 @@ class Match:
         :param current_layer_candidate:
         :return:
         """
-        shortest_distance, _ = self._shortest_path_length(
+
+        entry = self._transition_table.entry(
             previous_layer_candidate, current_layer_candidate
         )
 
+        return entry.probability
+
+    def _transition_data(self, previous_layer_candidate, current_layer_candidate):
+
+        (
+            shortest_distance,
+            shortest_path,
+            road_ids_along_shortest_path,
+        ) = self._path_information(previous_layer_candidate, current_layer_candidate)
+
         euclidean_distance = spatial.distance.euclidean(
             [
-                previous_layer_candidate.trace_point.x,
-                previous_layer_candidate.trace_point.y,
+                previous_layer_candidate.trace.x,
+                previous_layer_candidate.trace.y,
             ],
             [
-                current_layer_candidate.trace_point.x,
-                current_layer_candidate.trace_point.y,
+                current_layer_candidate.trace.x,
+                current_layer_candidate.trace.y,
             ],
         )
 
-        if shortest_distance == 0:
-            trans_prob = 0.99
-        else:
-            trans_prob = euclidean_distance / shortest_distance
-        print(
-            f"previous {previous_layer_candidate.road.fid} current {current_layer_candidate.road.fid} "
-            f"prob {trans_prob} distance {shortest_distance}"
+        self._transition_table.add_entry(
+            previous_layer_candidate,
+            current_layer_candidate,
+            shortest_path=shortest_path,
+            shortest_distance=shortest_distance,
+            shortest_road_id=road_ids_along_shortest_path,
+            probability=0.99
+            if shortest_distance == 0
+            else euclidean_distance / shortest_distance,
         )
-        return trans_prob
 
-    def _construct_graph(self, candidates_per_trace: defaultdict):
+    def _construct_graph(self, candidates_per_trace: CandidateCollection):
         """
         CANDIDATE POINTS FOR EVERY TRACE_REC FORM A CONNECTION WITH ITS SUBSEQUENT CANDIDATE POINTS
         CONSIDER A TRACE HAS TWO TRACE_REC [1, 2]
@@ -313,7 +471,7 @@ class Match:
             current_layer_collection = dict()
 
             for idx, current_layer_candidate in enumerate(candidates):
-                current_node_id = str(uuid) + "_" + str(idx)
+                current_node_id = current_layer_candidate.candidate_id
                 current_layer_collection[current_node_id] = current_layer_candidate
 
                 graph.add_node(
@@ -321,7 +479,7 @@ class Match:
                     observation_probability=self._observation_probability(
                         current_layer_candidate.x,
                         current_layer_candidate.y,
-                        current_layer_candidate.trace_point,
+                        current_layer_candidate.trace,
                     ),
                 )
                 if len(previous_layer_collection) == 0:
@@ -332,13 +490,16 @@ class Match:
                         previous_node_id,
                         previous_layer_candidate,
                     ) in previous_layer_collection.items():
-                        transmission_probability = self._transmission_probability(
+                        self._transition_data(
                             previous_layer_candidate, current_layer_candidate
                         )
+
                         graph.add_edge(
                             previous_node_id,
                             current_node_id,
-                            transmission_probability=transmission_probability,
+                            transmission_probability=self._transmission_probability(
+                                previous_layer_candidate, current_layer_candidate
+                            ),
                         )
 
             previous_layer_collection = current_layer_collection
@@ -365,18 +526,16 @@ class Match:
             my_candidates = candidates_per_trace[current_uuid]
 
             # LOOP OVER EACH CANDIDATE OF THE TRACE POINT
-            for idx, candidate in enumerate(my_candidates):
+            for candidate in my_candidates:
                 maximum = -math.inf
-                current_node_id = str(current_uuid) + "_" + str(idx)
+                current_node_id = candidate.candidate_id
 
                 # LOOP OVER THE CANDIDATES OF THE PREDECESSOR TRACE POINT
-                for previous_idx, previous_candidates in enumerate(
-                    candidates_per_trace[previous_uuid]
-                ):
+                for previous_candidates in candidates_per_trace[previous_uuid]:
                     # alt = highest_score_computed[previous_candidate] +
                     # transmission[previous_candidate, current_candidate] * observation[current_candidate]
 
-                    previous_node_id = str(previous_uuid) + "_" + str(previous_idx)
+                    previous_node_id = previous_candidates.candidate_id
                     alt = (
                         graph[previous_node_id][current_node_id][
                             "transmission_probability"
@@ -391,31 +550,26 @@ class Match:
                         ] = previous_node_id
                     highest_score_computed[current_node_id] = maximum
             previous_uuid = current_uuid
-        print(highest_score_computed)
+
+        # https://stackoverflow.com/questions/268272/getting-key-with-maximum-value-in-dictionary
+        max_node_id = max(highest_score_computed.items(), key=operator.itemgetter(1))[0]
+
         r_list = list()
-
-        max_probability = -math.inf
-        max_node_id = None
-        for node_id, probability in highest_score_computed.items():
-            if probability > max_probability:
-                max_node_id = node_id
-                max_probability = probability
-
-        for i in range(len(to_explore_uuid[1:])):
+        for _ in range(len(to_explore_uuid[1:])):
             r_list.append(max_node_id)
             max_node_id = parent_of_the_current_candidate[max_node_id]
 
         r_list.append(max_node_id)
         r_list.reverse()
 
-        matched_sequence = []
-        for node_id in r_list:
-            uuid, idx = node_id.split("_")
-            matched_sequence.append(candidates_per_trace[int(uuid)][int(idx)])
+        matched_sequence = [
+            candidates_per_trace[int(node_id.split("_")[0])][int(node_id.split("_")[1])]
+            for node_id in r_list
+        ]
 
         return matched_sequence
 
-    def _until_match(self, candidates_per_trace: defaultdict):
+    def _until_match(self, candidates_per_trace: CandidateCollection):
         """
         candidates_per_trace contains collection of candidates for each trace rec present in the trace
         candidates_per_trace = {trace_rec_uuid_1: [candidates for trace_rec_uuid_1],
@@ -429,27 +583,22 @@ class Match:
             candidates_per_trace=candidates_per_trace,
         )
         matched_sequence = self._find_matched_sequence(graph, candidates_per_trace)
-
         return matched_sequence
 
     def _get_connected_road_geometry(self, matched_sequence):
         connected_road_path = list()
         for previous, current in zip(matched_sequence, matched_sequence[1:]):
-            _, path = self._shortest_path_length(previous, current, path=True)
-            for _, fid in path.items():
-                for road in fid:
-                    if len(connected_road_path) == 0:
-                        connected_road_path.append(int(road))
-                    elif road != connected_road_path[-1]:
-                        connected_road_path.append(int(road))
-                    else:
-                        continue
+            entry = self._transition_table.entry(previous, current)
+            for road in entry.shortest_road_id:
+                if int(road) not in connected_road_path:
+                    connected_road_path.append(int(road))
+
         return connected_road_path
 
     def match(self):
 
-        for trace_id, trace in self._trace_store:
-            candidates_per_trace = defaultdict(list)
+        for trace_id, trace in self._trace_store.items():
+            candidates_per_trace = CandidateCollection()
 
             for trace_point in trace:
                 # [REFERENCE IN PAPER]
@@ -457,23 +606,49 @@ class Match:
                 # FOR EVERY TRACE POINT, PROJECT THE POINT ON TO ROAD SEGMENTS WITHIN CERTAIN BUFFER AND NOTE THE
                 # CANDIDATES
                 # EACH TRACE_REC CAN HAVE MULTIPLE CANDIDATES
+
+                # TODO Handle when no candidate found
                 candidates = self._get_candidates(trace_point)
-                candidates_per_trace[trace_point.uuid] = candidates
+                candidates_per_trace[trace_point.trace_point_id] = candidates
 
             # FIND A MATCH FOR A SINGLE TRACE
             matched_sequence = self._until_match(candidates_per_trace)
-            print("length of matched sequence {}".format(len(matched_sequence)))
             connected_path = self._get_connected_road_geometry(matched_sequence)
             yield trace_id, connected_path
 
+    @classmethod
+    def match_trace_to_road_shape_file(cls, road_shp_pth: str, trace_shp_pth: str):
+        """
 
-def line_geometry(feature: dict):
+        :param road_shp_pth:
+        :param trace_shp_pth:
+        :return:
+        """
+        road = road_from_shape_file(road_shp_pth)
+        trace = trace_from_point_shape_file(trace_shp_pth)
+        return cls(road=road, trace_store=trace)
+
+    def match_road_to_road_shape_file(self):
+        pass
+
+    def match_trace_to_road_geojson(self):
+        pass
+
+    def match_road_to_road_geojson(self):
+        pass
+
+
+def line_geometry(feature: dict) -> (int, dict, dict):
     """
     :param feature:
     :return:
     """
-    if "id" not in feature.keys() and "geometry" not in feature.keys():
-        raise KeyError("Missing Keys, Must have keys ['id'] and ['geometry']")
+    if (
+        "id" not in feature.keys()
+        and "geometry" not in feature.keys()
+        and "properties" not in feature.keys()
+    ):
+        raise KeyError("Missing Keys, Must have keys ['id', 'geometry', 'properties']")
     if "type" not in feature["geometry"] and "coordinates" not in feature["geometry"]:
         raise KeyError(
             "Missing Keys, Must have keys ['type'] and ['coordinates'] in feature['geometry']"
@@ -485,13 +660,14 @@ def line_geometry(feature: dict):
         (feature["geometry"]["type"],),
     )
 
-    feature_id = int(feature["id"])
-    geometry = shape(feature["geometry"])
+    return (
+        int(feature["id"]),
+        feature["properties"],
+        feature["geometry"],
+    )
 
-    return feature_id, geometry
 
-
-def road_from_shape_file(shape_file_path: str):
+def road_from_shape_file(shape_file_path: str) -> Road:
     """
 
     :param shape_file_path:
@@ -499,8 +675,7 @@ def road_from_shape_file(shape_file_path: str):
     """
     obj = fiona.open(shape_file_path)
 
-    road_graph = nx.DiGraph()
-    road_geometry = dict()
+    road_table = RoadData()
 
     assert obj.schema["geometry"] in ["LineString"], (
         "Expected geometry to be in ['LineString']",
@@ -508,42 +683,20 @@ def road_from_shape_file(shape_file_path: str):
         (obj.schema["geometry"],),
     )
 
-    road_geom = list()
     for feature in obj:
         assert feature["geometry"]["type"] in ["LineString"], (
             "Expected geometry to be in ['LineString']",
             "got %s",
             (feature["geometry"]["type"],),
         )
-        intermediate_nodes = list()
-        feature_id, feature_geometry = line_geometry(feature)
+        feature_id, feature_property, feature_geometry = line_geometry(feature)
 
-        road_geom.append(feature_geometry)
-        road_geometry[feature_id] = feature["geometry"]
+        road_table.add(feature_id, feature_property, feature_geometry)
 
-        line_string_coordinate = feature["geometry"]["coordinates"]
-        for coordinates in line_string_coordinate[1:-1]:
-            intermediate_nodes.append((coordinates[0], coordinates[1]))
-
-        # TODO weight=feature_geometry.length,
-        # TODO fishy
-        # TODO add hash
-        road_graph.add_edge(
-            u_of_edge=line_string_coordinate[0],
-            v_of_edge=line_string_coordinate[-1],
-            intermediate_nodes=intermediate_nodes,
-            fid=feature_id,
-            src=line_string_coordinate[0],
-            tg=line_string_coordinate[-1],
-            **feature["properties"],
-        )
-
-    return Road(
-        road_tree=STRtree(road_geom), road_graph=road_graph, road_geometry=road_geometry
-    )
+    return Road(road_table=road_table)
 
 
-def trace_from_point_shape_file(shape_file_path: str):
+def trace_from_point_shape_file(shape_file_path: str) -> TraceCollection:
     """
 
     :param shape_file_path:
@@ -553,9 +706,12 @@ def trace_from_point_shape_file(shape_file_path: str):
 
     assert all(
         element in list(obj.schema["properties"].keys())
-        for element in ["uuid", "track_id", "log_time", "car_id", "v"]
+        for element in [
+            "uuid",
+            "track_id",
+        ]
     ), (
-        "Expected keys to be in ShapeFile ['uuid', 'track_id', 'log_time', 'car_id', 'v']",
+        "Expected keys to be in ShapeFile ['uuid', 'track_id',]",
         "got %s",
         list(obj.schema["properties"].keys()),
     )
@@ -566,7 +722,7 @@ def trace_from_point_shape_file(shape_file_path: str):
         (obj.schema["geometry"],),
     )
 
-    trace_collection = defaultdict(list)
+    trace_collection = TraceCollection()
 
     for feature in obj:
         geometry = feature["geometry"]
@@ -577,50 +733,12 @@ def trace_from_point_shape_file(shape_file_path: str):
 
         # TODO Assumes every trace record has a unique uuid and a common trace_id
         # TODO RENAME UUID to UNIQUE_ID or ID
-        trace_collection[track_id].append(
-            TracePoint(
-                x,
-                y,
-                properties["uuid"],
-                track_id,
-                datetime.strptime(properties["log_time"], "%Y-%m-%d %H:%M:%S"),
-                properties["car_id"],
-                properties["v"],
-            )
+        trace_collection.add(
+            x=x,
+            y=y,
+            trace_point_id=properties["uuid"],
+            trace_id=track_id,
+            **properties,
         )
-    return TraceStore(trace_collection)
 
-
-d = fiona.open(r"D:\GIS\map-match\shp\input\connected_road.shp")
-ma = Match(
-    road_from_shape_file(r"D:\GIS\map-match\shp\input\connected_road.shp"),
-    trace_from_point_shape_file(r"D:\GIS\map-match\shp\input\track.shp"),
-)
-
-from collections import OrderedDict
-
-
-crs = {"init": "epsg:32649"}
-driver = "ESRI Shapefile"
-
-schema = {"properties": OrderedDict([("idx", "int")]), "geometry": "LineString"}
-for trace_id1, connected_path1 in ma.match():
-
-    import fiona
-
-    out_c = fiona.open(
-        r"D:\Cypherics\Library\kaizen\shp\new_path{}.shp".format(trace_id1),
-        "w",
-        driver=driver,
-        crs=crs,
-        schema=schema,
-    )
-    for i, road_id in enumerate(connected_path1):
-        rec = {
-            "type": "Feature",
-            "id": "-1",
-            "geometry": ma._road.geometry(int(road_id)),
-            "properties": OrderedDict([("idx", i)]),
-        }
-        out_c.write(rec)
-    out_c.close()
+    return trace_collection
