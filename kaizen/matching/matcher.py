@@ -14,31 +14,6 @@ from scipy import spatial
 from scipy import stats
 
 
-def write_candidate(point, id):
-    crs = {"init": "epsg:26910"}
-    driver = "ESRI Shapefile"
-
-    schema = {"properties": OrderedDict([("idx", "int")]), "geometry": "Point"}
-
-    import fiona
-
-    out_c = fiona.open(
-        r"D:\Cypherics\Library\kaizen\shp\candidate_{}.shp".format(id),
-        "w",
-        driver=driver,
-        crs=crs,
-        schema=schema,
-    )
-    rec = {
-        "type": "Feature",
-        "id": "-1",
-        "geometry": mapping(Point(point)),
-        "properties": OrderedDict([("idx", 1)]),
-    }
-    out_c.write(rec)
-    out_c.close()
-
-
 class RoadData(OrderedDict):
     """
     Store Road Data
@@ -428,116 +403,6 @@ class Match:
 
         return candidate_points
 
-    def _add_intermediate_edge(self, previous_layer_candidate, current_layer_candidate):
-        """
-        Add the candidate point in between the road element
-
-        :param previous_layer_candidate:
-        :param current_layer_candidate:
-        :return:
-        """
-
-        previous_candidate_road_projected_point = (
-            previous_layer_candidate.x,
-            previous_layer_candidate.y,
-        )
-        current_candidate_road_projected_point = (
-            current_layer_candidate.x,
-            current_layer_candidate.y,
-        )
-
-        # Checks if the candidate point not on the corner of the road element, if not then add intermediate edge
-        if (
-            previous_layer_candidate.distance != 0
-            and previous_layer_candidate.distance != 1
-        ):
-            self._road.graph.add_edge(
-                previous_layer_candidate.road.start,
-                previous_candidate_road_projected_point,
-                weight=Point(previous_layer_candidate.road.start).distance(
-                    Point(previous_candidate_road_projected_point)
-                ),
-                fid=previous_layer_candidate.road.fid,
-            )
-            self._road.graph.add_edge(
-                previous_candidate_road_projected_point,
-                previous_layer_candidate.road.end,
-                weight=Point(previous_layer_candidate.road.end).distance(
-                    Point(previous_candidate_road_projected_point)
-                ),
-                fid=previous_layer_candidate.road.fid,
-            )
-
-        # Checks if the candidate point not on the corner of the road element, if not then add intermediate edge
-        if (
-            current_layer_candidate.distance != 0
-            and current_layer_candidate.distance != 1
-        ):
-            self._road.graph.add_edge(
-                current_layer_candidate.road.start,
-                current_candidate_road_projected_point,
-                weight=Point(current_layer_candidate.road.start).distance(
-                    Point(current_candidate_road_projected_point)
-                ),
-                fid=current_layer_candidate.road.fid,
-            )
-            self._road.graph.add_edge(
-                current_candidate_road_projected_point,
-                current_layer_candidate.road.end,
-                weight=Point(current_layer_candidate.road.end).distance(
-                    Point(current_candidate_road_projected_point)
-                ),
-                fid=current_layer_candidate.road.fid,
-            )
-
-    def _remove_intermediate_edge(
-        self, previous_layer_candidate, current_layer_candidate
-    ):
-        """
-
-        :param previous_layer_candidate:
-        :param current_layer_candidate:
-        :return:
-        """
-
-        previous_candidate_road_projected_point = (
-            previous_layer_candidate.x,
-            previous_layer_candidate.y,
-        )
-        current_candidate_road_projected_point = (
-            current_layer_candidate.x,
-            current_layer_candidate.y,
-        )
-
-        # Checks if the candidate point not on the corner of the road element, if not then remove created
-        # intermediate edge
-        if (
-            previous_layer_candidate.distance != 0
-            and previous_layer_candidate.distance != 1
-        ):
-            self._road.graph.remove_edge(
-                previous_layer_candidate.road.start,
-                previous_candidate_road_projected_point,
-            )
-            self._road.graph.remove_edge(
-                previous_candidate_road_projected_point,
-                previous_layer_candidate.road.end,
-            )
-
-        # Checks if the candidate point not on the corner of the road element, if not then remove created
-        # intermediate edge
-        if (
-            current_layer_candidate.distance != 0
-            and current_layer_candidate.distance != 1
-        ):
-            self._road.graph.remove_edge(
-                current_layer_candidate.road.start,
-                current_candidate_road_projected_point,
-            )
-            self._road.graph.remove_edge(
-                current_candidate_road_projected_point, current_layer_candidate.road.end
-            )
-
     def _road_ids_along_shortest_path(self, shortest_path):
         """
         Get the road ids of the shortest traversed path
@@ -559,7 +424,6 @@ class Match:
         :param current_layer_candidate:
         :return:
         """
-
         previous_candidate_road_projected_point = (
             previous_layer_candidate.x,
             previous_layer_candidate.y,
@@ -570,12 +434,17 @@ class Match:
         )
 
         if previous_layer_candidate.road.fid == current_layer_candidate.road.fid:
-            if current_layer_candidate.distance <= previous_layer_candidate.distance:
+            if previous_layer_candidate.distance >= current_layer_candidate.distance:
+                # It indicates that the vehicle leaves edge e then re-enters e
+                # following the path
                 # TODO CHANGE self._max_distance
                 shortest_distance = self._max_distance
                 shortest_path = None
                 road_ids_along_shortest_path = None
-            else:
+
+            elif previous_layer_candidate.distance < current_layer_candidate.distance:
+                # It represents that the vehicle stays on edge e when moving from trace_point_1 to  trace_point_2
+
                 shortest_distance = Point(
                     previous_candidate_road_projected_point
                 ).distance(Point(current_candidate_road_projected_point))
@@ -584,30 +453,30 @@ class Match:
                     previous_layer_candidate.road.end,
                 ]
                 road_ids_along_shortest_path = [previous_layer_candidate.road.fid]
+            else:
+                raise Exception("Something went horribly Wrong")
 
         else:
-            self._add_intermediate_edge(
-                previous_layer_candidate, current_layer_candidate
-            )
+            # Candidates are on different edges
 
-            shortest_distance = nx.astar_path_length(
+            graph_distance = nx.astar_path_length(
                 self._road.graph,
-                previous_candidate_road_projected_point,
-                current_candidate_road_projected_point,
+                previous_layer_candidate.road.end,
+                current_layer_candidate.road.start,
             )
 
             shortest_path = nx.astar_path(
                 self._road.graph,
-                previous_candidate_road_projected_point,
-                current_candidate_road_projected_point,
+                previous_layer_candidate.road.start,
+                current_layer_candidate.road.end,
             )
+
+            # https://people.kth.se/~cyang/bib/fmm.pdf [Computation]
+            shortest_distance = ((previous_layer_candidate.road.weight - previous_layer_candidate.distance)
+                                 + graph_distance + current_layer_candidate.distance)
 
             road_ids_along_shortest_path = self._road_ids_along_shortest_path(
                 shortest_path
-            )
-
-            self._remove_intermediate_edge(
-                previous_layer_candidate, current_layer_candidate
             )
 
         return shortest_distance, shortest_path, road_ids_along_shortest_path
@@ -674,15 +543,14 @@ class Match:
             ],
         )
 
+        # Transition Probability done as per FMM [https://people.kth.se/~cyang/bib/fmm.pdf]
         self._transition_table.add_entry(
             previous_layer_candidate,
             current_layer_candidate,
             shortest_path=shortest_path,
             shortest_distance=shortest_distance,
             shortest_road_id=road_ids_along_shortest_path,
-            probability=0.99
-            if shortest_distance == 0
-            else euclidean_distance / shortest_distance,
+            probability=min(shortest_distance, euclidean_distance) / max(shortest_distance, euclidean_distance),
         )
 
     def _construct_graph(self, candidates_per_trace: CandidateCollection):
