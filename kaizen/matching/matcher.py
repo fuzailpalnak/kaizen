@@ -1,7 +1,9 @@
 import math
 import operator
-from collections import defaultdict, namedtuple, OrderedDict
+import uuid
+from collections import namedtuple, defaultdict, OrderedDict
 from types import SimpleNamespace
+from typing import Any
 
 import fiona
 import networkx as nx
@@ -11,16 +13,245 @@ from shapely.strtree import STRtree
 from scipy import spatial
 from scipy import stats
 
-from kaizen.matching.data_format import (
-    CandidateCollection,
-    TraceCollection,
-    CandidateData,
-    RoadData,
-    Transition,
-)
+
+def write_candidate(point, id):
+    crs = {"init": "epsg:26910"}
+    driver = "ESRI Shapefile"
+
+    schema = {"properties": OrderedDict([("idx", "int")]), "geometry": "Point"}
+
+    import fiona
+
+    out_c = fiona.open(
+        r"D:\Cypherics\Library\kaizen\shp\candidate_{}.shp".format(id),
+        "w",
+        driver=driver,
+        crs=crs,
+        schema=schema,
+    )
+    rec = {
+        "type": "Feature",
+        "id": "-1",
+        "geometry": mapping(Point(point)),
+        "properties": OrderedDict([("idx", 1)]),
+    }
+    out_c.write(rec)
+    out_c.close()
+
+
+class RoadData(OrderedDict):
+    """
+    Store Road Data
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._entry = namedtuple("Road", ["fid", "property", "geometry"])
+
+    def add(
+        self, feature_id: int, feature_property: OrderedDict, feature_geometry: dict
+    ):
+        assert (
+            feature_id is not None
+            and feature_property is not None
+            and feature_geometry is not None
+        ), "Expected ['feature_id', 'feature_property', 'feature_geometry'] to be not None"
+
+        assert type(feature_id) is int, (
+            "Expected type to be 'int'," "got %s",
+            (type(feature_id),),
+        )
+
+        assert type(feature_property) is OrderedDict, (
+            "Expected type to be 'dict'," "got %s",
+            (type(feature_property),),
+        )
+
+        assert type(feature_geometry) is dict, (
+            "Expected type to be 'dict'," "got %s",
+            (type(feature_geometry),),
+        )
+        self[feature_id] = self._entry(
+            fid=feature_id,
+            property=SimpleNamespace(**feature_property),
+            geometry=feature_geometry,
+        )
+
+
+class CandidateData(list):
+    """
+    Collect the potential candidate found for every trace point
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._entry = namedtuple(
+            "Candidate", ["candidate_id", "x", "y", "distance", "road", "trace"]
+        )
+
+    def add(
+        self,
+        x,
+        y,
+        candidate_id: str,
+        distance: float,
+        road_information: Any,
+        trace_information: Any,
+    ):
+        """
+        Every Found Candidate should contain  its position, unique id, candidates perpendicular distance from the
+        nearest road, information about the road element to which it is associated and information of the
+        trace point it belongs to
+
+        :param x:
+        :param y:
+        :param candidate_id: unique id
+        :param distance:  line referenced distance to the road
+        :param road_information: information of the road element on which the the candidate is projected
+        :param trace_information:  information of the trace point for which the candidate was obtained
+        :return:
+        """
+        assert (
+            x is not None
+            and y is not None
+            and distance is not None
+            and road_information is not None
+            and trace_information is not None
+        ), "Expected ['x', 'y', 'candidate_id', 'distance', 'road_information', 'trace_information'] to be not None"
+
+        assert type(distance) is float, (
+            "Expected type to be 'float'," "got %s",
+            (type(distance),),
+        )
+
+        assert all(
+            element in road_information for element in ["weight", "start", "end"]
+        ), (
+            "Expected keys to be in road_information ['weight', 'start', 'end',]",
+            "got %s",
+            road_information,
+        )
+
+        if isinstance(road_information, dict):
+            road_information = SimpleNamespace(**road_information)
+
+        if isinstance(trace_information, dict):
+            trace_information = SimpleNamespace(**trace_information)
+
+        self.append(
+            self._entry(
+                candidate_id=candidate_id,
+                x=x,
+                y=y,
+                distance=distance,
+                road=road_information,
+                trace=trace_information,
+            )
+        )
+
+
+class TraceCollection(defaultdict):
+    """
+    Collection of the Points for which a road is to be matched
+    """
+
+    def __init__(self):
+        super().__init__(list)
+        self._entry = namedtuple(
+            "TracePoint", ["x", "y", "trace_point_id", "trace_id", "additional"]
+        )
+
+    def add(self, x, y, trace_point_id, trace_id, **kwargs):
+        """
+        Every Trace must have a unique trace_id and the points in the trace [trace points] must have a unique id of
+        their own
+
+        {trace_1_id: [trace_point_1_id, trace_point_2_id]}
+
+        :param x:
+        :param y:
+        :param trace_point_id: unique id
+        :param trace_id: which trace does the trace point belong to
+        :param kwargs:
+        :return:
+        """
+        assert (
+            x is not None
+            and y is not None
+            and trace_point_id is not None
+            and trace_id is not None
+        ), "Expected ['x', 'y', 'trace_point_id', 'trace_id'] to be not None"
+        self[trace_id].append(
+            self._entry(
+                x=x,
+                y=y,
+                trace_point_id=trace_point_id,
+                trace_id=trace_id,
+                additional=SimpleNamespace(**kwargs),
+            )
+        )
+
+
+class CandidateCollection(defaultdict):
+    """"""
+
+    def __init__(self):
+        super().__init__(list)
+
+    def add(self, idx, candidate: CandidateData):
+        self[idx] = candidate
+
+
+class Transition(dict):
+    def __init__(self):
+        super().__init__()
+        self._entry = namedtuple(
+            "TransitionEntry",
+            [
+                "previous",
+                "current",
+                "shortest_path",
+                "shortest_distance",
+                "shortest_road_id",
+                "probability",
+            ],
+        )
+
+    @staticmethod
+    def generate_unique_key(previous_candidate, current_candidate):
+        return hash(
+            str(previous_candidate.road.fid)
+            + str(previous_candidate.candidate_id)
+            + str(current_candidate.road.fid)
+            + str(current_candidate.candidate_id)
+        )
+
+    def add(
+        self,
+        previous_candidate: namedtuple,
+        current_candidate: namedtuple,
+        shortest_path,
+        shortest_distance,
+        shortest_road_id,
+        probability,
+    ):
+        self[
+            self.generate_unique_key(previous_candidate, current_candidate)
+        ] = self._entry(
+            previous=previous_candidate,
+            current=current_candidate,
+            shortest_path=shortest_path,
+            shortest_distance=shortest_distance,
+            shortest_road_id=shortest_road_id,
+            probability=probability,
+        )
 
 
 class Road:
+    """
+    Information associated to the Road geometry which is to be used as base for matching
+    """
+
     def __init__(self, road_table):
         self._road_table = road_table
 
@@ -29,23 +260,27 @@ class Road:
 
     def intersection(self, geometry: Polygon):
         """
-
-        :param geometry:
+        Get all the intersecting polygon in the extent of the geometry
+        :param geometry: a shapely object
         :return:
         """
+        assert type(geometry) == Polygon, (
+            "Expected type to be 'Polygon'" "got %s",
+            (type(geometry),),
+        )
         return [road for road in self.tree.query(geometry) if road.intersects(geometry)]
 
     def geometry(self, fid):
         """
-
-        :param fid:
+        Get road geometry from the road table
+        :param fid: unique id to identify road element by
         :return:
         """
         return self._road_table[fid].geometry
 
     def entry(self, fid):
         """
-
+        get the entire information about the road
         :param fid:
         :return:
         """
@@ -53,9 +288,9 @@ class Road:
 
     def generate_graph(self):
         """
-
         :return:
         """
+        # https://stackoverflow.com/questions/30770776/networkx-how-to-create-multidigraph-from-shapefile
         road_graph = nx.DiGraph()
         for _, entry in self._road_table.items():
             intermediate_nodes = list()
@@ -63,10 +298,10 @@ class Road:
             line_string_coordinate = geometry["coordinates"]
             for coordinates in line_string_coordinate[1:-1]:
                 intermediate_nodes.append((coordinates[0], coordinates[1]))
-
-            road_graph.add_edge(
-                u_of_edge=line_string_coordinate[0],
-                v_of_edge=line_string_coordinate[-1],
+            road_graph.add_edges_from(
+                [
+                    (line_string_coordinate[0], line_string_coordinate[-1]),
+                ],
                 intermediate_nodes=intermediate_nodes,
                 fid=entry.fid,
                 weight=shape(geometry).length,
@@ -85,6 +320,11 @@ class Road:
 
 
 class TransitionTable:
+    """
+    Stores all the transmission Information about the States
+    [ShortestPath, ShortestDistance, ShortestRoadId, Probability] of Travelling from One State to Another
+    """
+
     def __init__(self):
         self._transition_table = Transition()
 
@@ -99,12 +339,13 @@ class TransitionTable:
     ):
         """
 
-        :param previous_candidate:
+        :param previous_candidate: previous candidate
         :param current_candidate:
-        :param shortest_path:
-        :param shortest_distance:
-        :param shortest_road_id:
-        :param probability:
+        :param shortest_path: shortest path need to be traversed to reach from previous_candidate to current_candidate
+        :param shortest_distance: shortest distance to be traversed to reach from previous_candidate to
+        current_candidate
+        :param shortest_road_id: road_ids of the shortest path
+        :param probability: probability of travelling from previous_candidate to current_candidate
         :return:
         """
         assert (
@@ -144,7 +385,7 @@ class Match:
     def _get_candidates(self, trace_point: namedtuple):
         """
 
-        :param trace_point:
+        :param trace_point: Observed data point
         :return:
         """
         tr_point = Point(trace_point.x, trace_point.y)
@@ -189,6 +430,7 @@ class Match:
 
     def _add_intermediate_edge(self, previous_layer_candidate, current_layer_candidate):
         """
+        Add the candidate point in between the road element
 
         :param previous_layer_candidate:
         :param current_layer_candidate:
@@ -204,6 +446,7 @@ class Match:
             current_layer_candidate.y,
         )
 
+        # Checks if the candidate point not on the corner of the road element, if not then add intermediate edge
         if (
             previous_layer_candidate.distance != 0
             and previous_layer_candidate.distance != 1
@@ -225,6 +468,7 @@ class Match:
                 fid=previous_layer_candidate.road.fid,
             )
 
+        # Checks if the candidate point not on the corner of the road element, if not then add intermediate edge
         if (
             current_layer_candidate.distance != 0
             and current_layer_candidate.distance != 1
@@ -264,6 +508,9 @@ class Match:
             current_layer_candidate.x,
             current_layer_candidate.y,
         )
+
+        # Checks if the candidate point not on the corner of the road element, if not then remove created
+        # intermediate edge
         if (
             previous_layer_candidate.distance != 0
             and previous_layer_candidate.distance != 1
@@ -277,6 +524,8 @@ class Match:
                 previous_layer_candidate.road.end,
             )
 
+        # Checks if the candidate point not on the corner of the road element, if not then remove created
+        # intermediate edge
         if (
             current_layer_candidate.distance != 0
             and current_layer_candidate.distance != 1
@@ -291,6 +540,7 @@ class Match:
 
     def _road_ids_along_shortest_path(self, shortest_path):
         """
+        Get the road ids of the shortest traversed path
 
         :param shortest_path:
         :return:
@@ -460,17 +710,16 @@ class Match:
         :return:
         """
 
-        graph = nx.Graph()
+        graph = nx.DiGraph()
 
         previous_layer_collection = dict()
 
-        for uuid, candidates in candidates_per_trace.items():
+        for _, candidates in candidates_per_trace.items():
             # GET CLOSET CANDIDATE POINTS FOR EVERY TRACE_POINT IN A SINGLE TRACE
-            assert len(candidates) > 0
 
             current_layer_collection = dict()
 
-            for idx, current_layer_candidate in enumerate(candidates):
+            for current_layer_candidate in candidates:
                 current_node_id = current_layer_candidate.candidate_id
                 current_layer_collection[current_node_id] = current_layer_candidate
 
@@ -506,7 +755,14 @@ class Match:
         return graph
 
     @staticmethod
-    def _find_matched_sequence(graph, candidates_per_trace):
+    def _find_matched_sequence(graph, candidates_per_trace: CandidateCollection):
+        """
+        Find the matched sequence from given the transmission and observation probabilities
+
+        :param graph:
+        :param candidates_per_trace:
+        :return:
+        """
         highest_score_computed = dict()
         parent_of_the_current_candidate = dict()
         to_explore_uuid = list(candidates_per_trace.keys())
@@ -515,7 +771,7 @@ class Match:
         # STORE THE VALUES OF ALL THE CANDIDATES OF THE FIRST TRACE POINT
         for current_uuid in to_explore_uuid[0:1]:
             for idx, candidate in enumerate(candidates_per_trace[current_uuid]):
-                max_node_id = str(current_uuid) + "_" + str(idx)
+                max_node_id = candidate.candidate_id
                 highest_score_computed[max_node_id] = graph.nodes[max_node_id][
                     "observation_probability"
                 ]
@@ -563,8 +819,10 @@ class Match:
         r_list.reverse()
 
         matched_sequence = [
-            candidates_per_trace[int(node_id.split("_")[0])][int(node_id.split("_")[1])]
-            for node_id in r_list
+            candidates_per_trace[int(candidate_id.split("_")[0])][
+                int(candidate_id.split("_")[-1])
+            ]
+            for candidate_id in r_list
         ]
 
         return matched_sequence
@@ -607,9 +865,10 @@ class Match:
                 # CANDIDATES
                 # EACH TRACE_REC CAN HAVE MULTIPLE CANDIDATES
 
-                # TODO Handle when no candidate found
                 candidates = self._get_candidates(trace_point)
-                candidates_per_trace[trace_point.trace_point_id] = candidates
+
+                if len(candidates) != 0:
+                    candidates_per_trace.add(trace_point.trace_point_id, candidates)
 
             # FIND A MATCH FOR A SINGLE TRACE
             matched_sequence = self._until_match(candidates_per_trace)
@@ -628,8 +887,17 @@ class Match:
         trace = trace_from_point_shape_file(trace_shp_pth)
         return cls(road=road, trace_store=trace)
 
-    def match_road_to_road_shape_file(self):
-        pass
+    @classmethod
+    def match_road_to_road_shape_file(cls, find_match_in: str, find_match_for: str):
+        """
+
+        :param find_match_in:
+        :param find_match_for:
+        :return:
+        """
+        road = road_from_shape_file(find_match_in)
+        trace = trace_from_shape_file(find_match_for)
+        return cls(road, trace)
 
     def match_trace_to_road_geojson(self):
         pass
@@ -707,11 +975,10 @@ def trace_from_point_shape_file(shape_file_path: str) -> TraceCollection:
     assert all(
         element in list(obj.schema["properties"].keys())
         for element in [
-            "uuid",
             "track_id",
         ]
     ), (
-        "Expected keys to be in ShapeFile ['uuid', 'track_id',]",
+        "Expected keys to be in ShapeFile ['track_id',]",
         "got %s",
         list(obj.schema["properties"].keys()),
     )
@@ -725,20 +992,52 @@ def trace_from_point_shape_file(shape_file_path: str) -> TraceCollection:
     trace_collection = TraceCollection()
 
     for feature in obj:
-        geometry = feature["geometry"]
-        x = geometry["coordinates"][0]
-        y = geometry["coordinates"][1]
-        properties = feature["properties"]
-        track_id = properties["track_id"]
+        trace_point_id = uuid.uuid1()
 
-        # TODO Assumes every trace record has a unique uuid and a common trace_id
-        # TODO RENAME UUID to UNIQUE_ID or ID
         trace_collection.add(
-            x=x,
-            y=y,
-            trace_point_id=properties["uuid"],
-            trace_id=track_id,
-            **properties,
+            x=feature["geometry"]["coordinates"][0],
+            y=feature["geometry"]["coordinates"][1],
+            trace_point_id=trace_point_id.int,
+            trace_id=feature["properties"]["track_id"],
+            **feature["properties"],
         )
 
+    return trace_collection
+
+
+def trace_from_shape_file(shape_file_path: str):
+    """
+
+    :param shape_file_path:
+    :return:
+    """
+    obj = fiona.open(shape_file_path)
+
+    trace_collection = TraceCollection()
+
+    assert obj.schema["geometry"] in ["LineString"], (
+        "Expected geometry to be in ['LineString']",
+        "got %s",
+        (obj.schema["geometry"],),
+    )
+
+    for feature in obj:
+        assert feature["geometry"]["type"] in ["LineString"], (
+            "Expected geometry to be in ['LineString']",
+            "got %s",
+            (feature["geometry"]["type"],),
+        )
+        feature_id, feature_property, feature_geometry = line_geometry(feature)
+        line_string_coordinate = feature_geometry["coordinates"]
+
+        trace_id = uuid.uuid1()
+
+        for nodes in line_string_coordinate:
+            trace_point_id = uuid.uuid1()
+            trace_collection.add(
+                x=nodes[0],
+                y=nodes[-1],
+                trace_point_id=trace_point_id.int,
+                trace_id=trace_id.int,
+            )
     return trace_collection
