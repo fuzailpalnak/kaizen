@@ -222,7 +222,7 @@ class Transition(dict):
         )
 
 
-class Road:
+class RoadNetwork:
     """
     Information associated to the Road geometry which is to be used as base for matching
     """
@@ -348,7 +348,7 @@ class TransitionTable:
 
 
 class Match:
-    def __init__(self, road: Road, trace_store: TraceCollection):
+    def __init__(self, road: RoadNetwork, trace_store: TraceCollection):
         self._road = road
         self._trace_store = trace_store
 
@@ -435,8 +435,7 @@ class Match:
 
         if previous_layer_candidate.road.fid == current_layer_candidate.road.fid:
             if previous_layer_candidate.distance >= current_layer_candidate.distance:
-                # It indicates that the vehicle leaves edge e then re-enters e
-                # following the path
+                # It indicates that the vehicle leaves edge e then re-entering the same edge e
                 # TODO CHANGE self._max_distance
                 shortest_distance = self._max_distance
                 shortest_path = None
@@ -543,14 +542,13 @@ class Match:
             ],
         )
 
-        # Transition Probability done as per FMM [https://people.kth.se/~cyang/bib/fmm.pdf]
         self._transition_table.add_entry(
             previous_layer_candidate,
             current_layer_candidate,
             shortest_path=shortest_path,
             shortest_distance=shortest_distance,
             shortest_road_id=road_ids_along_shortest_path,
-            probability=min(shortest_distance, euclidean_distance) / max(shortest_distance, euclidean_distance),
+            probability=euclidean_distance / shortest_distance,
         )
 
     def _construct_graph(self, candidates_per_trace: CandidateCollection):
@@ -803,7 +801,7 @@ def line_geometry(feature: dict) -> (int, dict, dict):
     )
 
 
-def road_from_shape_file(shape_file_path: str) -> Road:
+def road_from_shape_file(shape_file_path: str) -> RoadNetwork:
     """
 
     :param shape_file_path:
@@ -829,7 +827,7 @@ def road_from_shape_file(shape_file_path: str) -> Road:
 
         road_table.add(feature_id, feature_property, feature_geometry)
 
-    return Road(road_table=road_table)
+    return RoadNetwork(road_table=road_table)
 
 
 def trace_from_point_shape_file(shape_file_path: str) -> TraceCollection:
