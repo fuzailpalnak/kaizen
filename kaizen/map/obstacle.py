@@ -1,55 +1,18 @@
-import fiona
 import cv2
+import geopandas
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 
 from shapely.geometry import Polygon, mapping
 
+from kaizen.map.trace import TracePoint
+from kaizen.utils.gis import geom_check, decompose_data_frame_row
+
 
 class Obstacle:
     def __init__(self, obs_map):
         self.obs_map = obs_map
-
-    @classmethod
-    def from_polygon(cls, grid, polygon: fiona.collection, extend_boundary_pixel: int):
-        """
-        GENERATE OBSTACLE MAP FROM SPATIAL GEOMETRY [POLYGON]
-
-        :param grid:
-        :param polygon:
-        :param extend_boundary_pixel:
-        :return:
-        """
-        extent = np.zeros(
-            [grid.y_width, grid.x_width], np.uint8
-        )  # create a single channel 200x200 pixel black image
-
-        for i, feature in enumerate(polygon):
-            if feature["type"] == "MultiPolygon":
-                raise NotImplementedError("MultiPolygon Not Implemented")
-            coordinates = feature["geometry"]["coordinates"]
-            for sub_coordinate in coordinates:
-                boundary_coordinates = mapping(Polygon(sub_coordinate).boundary)[
-                    "coordinates"
-                ]
-                corner_points = [
-                    grid.to_pixel_position(bo[0], bo[1]) for bo in boundary_coordinates
-                ]
-                corner_points = np.array(corner_points[:-1], np.int32)
-
-                # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
-                cv2.drawContours(
-                    extent,
-                    [corner_points],
-                    0,
-                    color=(255, 255, 255),
-                    thickness=extend_boundary_pixel,
-                )
-                cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
-
-        obs_map = extent >= 255
-        return cls(obs_map=obs_map.T)
 
     def animate_obstacle(self):
         x, y = np.where(self.obs_map == True)
@@ -81,3 +44,49 @@ class Obstacle:
         mx = (mx * grid.resolution) + grid.minx
         my = (my * grid.resolution) + grid.miny
         return mx, my
+
+    def collision_check(self, trace_point: TracePoint):
+        return self.obs_map[trace_point.x][trace_point.y]
+
+
+def generate_obstacle(obstacle_file: str, grid, extend_boundary_pixel: int) -> Obstacle:
+    """
+    Generate Obstacle for GeoSpatial Polygon
+
+    :param obstacle_file:
+    :param grid:
+    :param extend_boundary_pixel:
+    :return:
+    """
+    obstacle_data = geopandas.read_file(obstacle_file)
+    assert geom_check(
+        obstacle_data, "Polygon"
+    ), "Expected all geometries in to be Polygon"
+
+    extent = np.zeros([grid.y_width, grid.x_width], np.uint8)
+
+    for idx, feature in obstacle_data.iterrows():
+        feature_geometry, feature_property = decompose_data_frame_row(feature)
+
+        coordinates = feature_geometry["coordinates"]
+        for sub_coordinate in coordinates:
+            boundary_coordinates = mapping(Polygon(sub_coordinate).boundary)[
+                "coordinates"
+            ]
+            corner_points = [
+                grid.to_pixel_position(bo[0], bo[1]) for bo in boundary_coordinates
+            ]
+            corner_points = np.array(corner_points[:-1], np.int32)
+
+            # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
+            cv2.drawContours(
+                extent,
+                [corner_points],
+                0,
+                color=(255, 255, 255),
+                thickness=extend_boundary_pixel,
+            )
+            cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
+
+    obs_map = extent >= 255
+    return Obstacle(obs_map=obs_map.T)

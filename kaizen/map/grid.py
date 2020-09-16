@@ -4,6 +4,14 @@ from rasterio.transform import rowcol, xy
 
 class Grid:
     def __init__(self, minx, miny, maxx, maxy, resolution):
+        """
+
+        :param minx:
+        :param miny:
+        :param maxx:
+        :param maxy:
+        :param resolution:
+        """
         self.minx = minx
         self.miny = miny
 
@@ -17,9 +25,19 @@ class Grid:
         self.y_width = abs(round((self.maxy - self.miny) / self.resolution))
 
     def x_pos(self, x):
+        """
+
+        :param x:
+        :return:
+        """
         return x * self.resolution + self.minx
 
     def y_pos(self, y):
+        """
+
+        :param y:
+        :return:
+        """
         return y * self.resolution + self.miny
 
     def grid_index(self, x, y):
@@ -35,6 +53,9 @@ class Grid:
 
 
 class PixelGrid(Grid):
+    """
+    Pixel Grid Over the Spatial Coordinates
+    """
     def __init__(
         self,
         minx: float,
@@ -74,6 +95,13 @@ class PixelGrid(Grid):
 
     @staticmethod
     def generate_affine(minx: float, maxy: float, resolution: float) -> Affine:
+        """
+        Generate affine transform over the spatial coordinates
+        :param minx: min x of the extent
+        :param maxy: max y of the extent
+        :param resolution: what resolution to use to convert the spatial coordinates in pixel
+        :return:
+        """
         return Affine.translation(minx, maxy) * Affine.scale(resolution, -resolution)
 
     @classmethod
@@ -81,6 +109,7 @@ class PixelGrid(Grid):
         cls, minx: float, miny: float, maxx: float, maxy: float, resolution: float
     ):
         """
+        convert spatial coordinates to image height and image width
         :param minx:
         :param miny:
         :param maxx:

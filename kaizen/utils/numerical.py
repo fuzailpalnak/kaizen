@@ -111,10 +111,58 @@ def get_perpendicular_point(start: tuple, end: tuple, offset=10):
 
 
 def vector(p1, p2):
+    """
+
+    :param p1:
+    :param p2:
+    :return:
+    """
     return p1[0] - p2[0], p1[1] - p2[1]
 
 
 def cosine_similarity(p1, p2, p3):
+    """
+
+    :param p1:
+    :param p2:
+    :param p3:
+    :return:
+    """
     a = vector((p1[0], p1[1]), (p2[0], p2[1]))
     b = vector((p1[0], p1[1]), (p3[0], p3[1]))
     return dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
+def diagonal_distance(p1: tuple, p2: tuple, d1: float, d2: float):
+    """
+
+    :param p1:
+    :param p2:
+    :param d1:
+    :param d2:
+    :return:
+    """
+    dx = abs(p1[0] - p2[0])
+    dy = abs(p1[1] - p2[1])
+
+    return d1 * (dx + dy) + (d2 - 2 * d1) * min(dx, dy)
+
+
+def euclidean_distance(p1: tuple, p2: tuple):
+    """
+
+    :param p1:
+    :param p2:
+    :return:
+    """
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+
+
+def manhattan_distance(p1: tuple, p2: tuple):
+    """
+
+    :param p1:
+    :param p2:
+    :return:
+    """
+    return abs(p2[0] - p1[0]) + abs(p2[1] - p1[1])

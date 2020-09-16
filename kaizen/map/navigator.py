@@ -6,14 +6,83 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from kaizen.map.obstacle import Obstacle
-from kaizen.path.node import StartNode, GoalNode, Node, Vertex
-from kaizen.path.robot import Robot
-from kaizen.utils.numerical import angle_between_vector, vector
+from kaizen.map.robot import Robot
+from kaizen.map.trace import TracePoint
+from kaizen.utils.numerical import (
+    angle_between_vector,
+    vector,
+    diagonal_distance,
+    euclidean_distance,
+    manhattan_distance,
+)
 
 show_animation = True
 
 
-class PathFinder:
+class Node:
+    def __init__(self, x: int, y: int, cost: float, parent_index):
+        """
+
+        :param x:
+        :param y:
+        :param cost:
+        :param parent_index:
+        """
+        self.x = x
+        self.y = y
+        self.cost = cost
+        self.parent_index = parent_index
+        self.parent_node = None
+
+    def __str__(self):
+        return (
+            str(self.x)
+            + ","
+            + str(self.y)
+            + ","
+            + str(self.cost)
+            + ","
+            + str(self.parent_index)
+        )
+
+
+class StartNode(Node):
+    def __init__(self, x: int, y: int, cost: float, parent_index):
+        """
+
+        :param x:
+        :param y:
+        :param cost:
+        :param parent_index:
+        """
+        super().__init__(x, y, cost, parent_index)
+
+
+class GoalNode(Node):
+    def __init__(
+        self, x: int, y: int, cost: float, parent_index, is_intermediate=False
+    ):
+        """
+
+        :param x:
+        :param y:
+        :param cost:
+        :param parent_index:
+        :param is_intermediate:
+        """
+        super().__init__(x, y, cost, parent_index)
+        self._is_intermediate = is_intermediate
+
+    @property
+    def is_intermediate(self):
+        """
+        Informs weather the goal is either intermediate of final
+        :return:
+        """
+        return self._is_intermediate
+
+
+class Navigator:
     # http://theory.stanford.edu/~amitp/GameProgramming/
     def __init__(self, grid, obstacle: Obstacle):
         self._grid = grid
@@ -32,37 +101,44 @@ class PathFinder:
         self._direction = Robot().direction()
 
     def node_connectivity(self, start_node: StartNode, goal_collection: list):
+        """
+        Calculates the distance from the current node along with consecutive nodes to the final goal node
+        :param start_node:
+        :param goal_collection:
+        :return:
+        """
+
         connectivity_meta = OrderedDict()
 
         # ELEMENT FROM 0 th INDEX IS DELETED ON 'del self.goal_collection[0]', WHICH RESULTS IN A GLOBAL DELETE,
         # AND IF 'self.goal_collection'IS COPIED DIRECTLY THEN THE ELEMENTS FROM ITS REFERENCE IS ALSO DELETED, HENCE
         # 'FOR' LOOP IS USED TO CREATE A NEW COPY.
-        d = self.diagonal(goal_collection[0], start_node)
+        distance = self.diagonal(goal_collection[0], start_node)
         for j in range(len(goal_collection) - 1):
-            d += self.diagonal(goal_collection[j], goal_collection[j + 1])
+            distance += self.diagonal(goal_collection[j], goal_collection[j + 1])
 
         my_intermediate_goal = goal_collection[0]
         connectivity_meta[start_node] = {
             "connectivity": [goal for goal in goal_collection],
-            "total_to_goal": d,
+            "total_to_goal": distance,
             "my_intermediate_goal": my_intermediate_goal,
         }
 
         for i, goal in enumerate(goal_collection):
             collection = goal_collection[i + 1 :]
             if len(collection) == 0:
-                d = 0
+                distance = 0
                 my_intermediate_goal = None
 
             else:
                 my_intermediate_goal = collection[0]
-                d = self.diagonal(goal, collection[0])
+                distance = self.diagonal(goal, collection[0])
                 for j in range(len(collection) - 1):
-                    d += self.diagonal(collection[j], collection[j + 1])
+                    distance += self.diagonal(collection[j], collection[j + 1])
 
             connectivity_meta[goal] = {
                 "connectivity": [goal for goal in collection],
-                "total_to_goal": d,
+                "total_to_goal": distance,
                 "my_intermediate_goal": my_intermediate_goal,
             }
         return connectivity_meta
@@ -76,6 +152,10 @@ class PathFinder:
         self._navigate_space = value
 
     def pre_compute_goal_heuristics(self):
+        """
+
+        :return:
+        """
         raise NotImplementedError
 
     @staticmethod
@@ -96,43 +176,89 @@ class PathFinder:
 
     @staticmethod
     def diagonal(goal: GoalNode, node: Node, d1=1, d2=math.sqrt(2)):
+        """
+
+        :param goal:
+        :param node:
+        :param d1:
+        :param d2:
+        :return:
+        """
         # https://stackoverflow.com/questions/46974075/a-star-algorithm-distance-heuristics
         # http://theory.stanford.edu/~amitp/GameProgramming/Heuristics.html
         # https://www.growingwiththeweb.com/2012/06/a-pathfinding-algorithm.html
 
-        dx = abs(node.x - goal.x)
-        dy = abs(node.y - goal.y)
-
-        return d1 * (dx + dy) + (d2 - 2 * d1) * min(dx, dy)
+        return diagonal_distance((node.x, node.y), (goal.x, goal.y), d1, d2)
 
     @staticmethod
     def euclidean(goal: GoalNode, node: Node):
-        return math.hypot(goal.x - node.x, goal.y - node.y)
+        """
+
+        :param goal:
+        :param node:
+        :return:
+        """
+        return euclidean_distance((node.x, node.y), (goal.x, goal.y))
 
     @staticmethod
     def manhattan(goal: GoalNode, node: Node):
-        return abs(goal.x - node.x) + abs(goal.y - node.y)
+        """
+
+        :param goal:
+        :param node:
+        :return:
+        """
+        return manhattan_distance((node.x, node.y), (goal.x, goal.y))
 
     def path(
         self,
-        start: Vertex,
-        goal: Vertex,
+        start: TracePoint,
+        goal: TracePoint,
         intermediate_goal: list,
         space_threshold: float,
     ):
+        """
+
+        :param start:
+        :param goal:
+        :param intermediate_goal:
+        :param space_threshold:
+        :return:
+        """
         raise NotImplementedError
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
+        """
+
+        :param goal:
+        :param potential_node:
+        :param kwargs:
+        :return:
+        """
         raise NotImplementedError
 
     def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
         raise NotImplementedError
 
     def final_path(self, grid, goal: GoalNode, closed_set: dict):
+        """
+
+        :param grid:
+        :param goal:
+        :param closed_set:
+        :return:
+        """
         raise NotImplementedError
 
     @staticmethod
-    def generate_nodes(start: Vertex, goal: Vertex, intermediate_goals: list):
+    def generate_nodes(start: TracePoint, goal: TracePoint, intermediate_goals: list):
+        """
+
+        :param start:
+        :param goal:
+        :param intermediate_goals:
+        :return:
+        """
         start_node = StartNode(
             start.x,
             start.y,
@@ -145,22 +271,22 @@ class PathFinder:
             0.0,
             -1,
         )
-        intermediate_goal = list()
+        intermediate_goal_nodes = list()
 
-        for index, vertex in enumerate(intermediate_goals):
+        for index, trace_point in enumerate(intermediate_goals):
             goal = GoalNode(
-                vertex.x,
-                vertex.y,
+                trace_point.x,
+                trace_point.y,
                 0.0,
                 -1,
                 is_intermediate=True,
             )
-            intermediate_goal.append(goal)
-        intermediate_goal.append(goal_node)
-        return start_node, goal_node, intermediate_goal
+            intermediate_goal_nodes.append(goal)
+        intermediate_goal_nodes.append(goal_node)
+        return start_node, goal_node, intermediate_goal_nodes
 
 
-class AStar(PathFinder):
+class AStar(Navigator):
     def __init__(self, grid, obstacle: Obstacle):
         super().__init__(grid, obstacle)
 
@@ -168,8 +294,20 @@ class AStar(PathFinder):
         pass
 
     def path(
-        self, start: Vertex, goal: Vertex, intermediate_goal: list, space_threshold=5
+        self,
+        start: TracePoint,
+        goal: TracePoint,
+        intermediate_goal: list,
+        space_threshold=5,
     ):
+        """
+
+        :param start:
+        :param goal:
+        :param intermediate_goal:
+        :param space_threshold:
+        :return:
+        """
         start, goal, goal_collection = self.generate_nodes(
             start, goal, intermediate_goal
         )
@@ -184,8 +322,6 @@ class AStar(PathFinder):
         parent_node = start
 
         previous_goal = n_goal
-        # TODO SOLVE THE PROBLEM OF DIRECTION TO CHOOSE FOR NAVIGATION
-        # TODO HEURISTIC FOR MULTI GOAL
 
         while 1:
             if len(open_set) == 0:
@@ -305,11 +441,19 @@ class AStar(PathFinder):
         return rx, ry
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
+        """
+
+        :param goal:
+        :param potential_node:
+        :param kwargs:
+        :return:
+        """
         connectivity_meta = kwargs["connectivity_meta"]
         weight = 1
 
         # LOOK FOR THE INTERMEDIATE GOAL OF THE CONSIDERED NODE AND COMPUTE COST ACCORDINGLY
-        # GET MY ACTUAL GOAL -> COMPUTE COST(MY_ACTUAL_GOAL, POTENTIAL_NODE) + COST FROM (MY_ACTUAL_GOAL, TO FINAL GOAL)
+        # [GET MY ACTUAL GOAL]
+        #       THEN - COMPUTE COST(MY_ACTUAL_GOAL, POTENTIAL_NODE) + COST FROM (MY_ACTUAL_GOAL, TO FINAL GOAL)
         my_cost_from_intermediate_to_final_goal = 0
         my_actual_goal = connectivity_meta[potential_node.parent_node][
             "my_intermediate_goal"
@@ -326,6 +470,13 @@ class AStar(PathFinder):
         return weight * cost
 
     def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
+        """
+
+        :param grid:
+        :param obstacle_map:
+        :param node:
+        :return:
+        """
         px = grid.x_pos(node.x)
         py = grid.y_pos(node.y)
 
@@ -343,6 +494,13 @@ class AStar(PathFinder):
         return True
 
     def final_path(self, grid, goal: GoalNode, closed_set: dict):
+        """
+
+        :param grid:
+        :param goal:
+        :param closed_set:
+        :return:
+        """
         rx, ry = [grid.x_pos(goal.x)], [grid.y_pos(goal.y)]
         parent_index = goal.parent_index
         while parent_index != -1:
