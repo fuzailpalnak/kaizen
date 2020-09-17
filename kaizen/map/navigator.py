@@ -1,13 +1,14 @@
 import math
 from collections import OrderedDict
+from typing import Tuple, List
 
 import numpy as np
 
 import matplotlib.pyplot as plt
 
-from kaizen.map.obstacle import Obstacle
 from kaizen.map.robot import Robot
 from kaizen.map.trace import TracePoint
+from kaizen.utils.gis import pixel_position
 from kaizen.utils.numerical import (
     angle_between_vector,
     vector,
@@ -16,7 +17,7 @@ from kaizen.utils.numerical import (
     manhattan_distance,
 )
 
-show_animation = True
+SHOW_ANIMATION = True
 
 
 class Node:
@@ -84,9 +85,8 @@ class GoalNode(Node):
 
 class Navigator:
     # http://theory.stanford.edu/~amitp/GameProgramming/
-    def __init__(self, grid, obstacle: Obstacle):
+    def __init__(self, grid):
         self._grid = grid
-        self._obstacle = obstacle
 
         #  INITIAL NAVIGATION SPACE IS SET TO 90 DEG, LATER ON THE PATH FINDER WILL
         #  ADJUST AS PER THE LOCATION OF GOAL NODE
@@ -100,7 +100,9 @@ class Navigator:
 
         self._direction = Robot().direction()
 
-    def node_connectivity(self, start_node: StartNode, goal_collection: list):
+    def node_connectivity(
+        self, start_node: StartNode, goal_collection: list
+    ) -> OrderedDict:
         """
         Calculates the distance from the current node along with consecutive nodes to the final goal node
         :param start_node:
@@ -212,16 +214,12 @@ class Navigator:
 
     def path(
         self,
-        start: TracePoint,
-        goal: TracePoint,
-        intermediate_goal: list,
+        trace: list,
         space_threshold: float,
     ):
         """
 
-        :param start:
-        :param goal:
-        :param intermediate_goal:
+        :param trace:
         :param space_threshold:
         :return:
         """
@@ -237,7 +235,7 @@ class Navigator:
         """
         raise NotImplementedError
 
-    def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
+    def obstacle_check(self, grid, node: Node) -> bool:
         raise NotImplementedError
 
     def final_path(self, grid, goal: GoalNode, closed_set: dict):
@@ -250,67 +248,112 @@ class Navigator:
         """
         raise NotImplementedError
 
-    @staticmethod
-    def generate_nodes(start: TracePoint, goal: TracePoint, intermediate_goals: list):
+    def generate_nodes(
+        self, start: TracePoint, goal: TracePoint, intermediate_goals: list
+    ) -> Tuple[StartNode, GoalNode, list]:
         """
+        Generate nodes fro navigator to traverse
 
         :param start:
         :param goal:
         :param intermediate_goals:
         :return:
         """
+        assert not self._grid.collision_check(
+            *pixel_position(start.x, start.y, self._grid.transform)
+        ) and not self._grid.collision_check(
+            *pixel_position(start.x, start.y, self._grid.transform)
+        ), (
+            "Expected Start Node and Goal Node to located outside the Obstacle Zone"
+            "Apply 'filter_trace' to eliminate trace point which lie on obstacle"
+        )
         start_node = StartNode(
-            start.x,
-            start.y,
-            0.0,
-            -1,
+            *pixel_position(start.x, start.y, self._grid.transform),
+            cost=0.0,
+            parent_index=-1,
         )
-        goal_node = GoalNode(
-            goal.x,
-            goal.y,
-            0.0,
-            -1,
-        )
-        intermediate_goal_nodes = list()
 
+        goal_node = GoalNode(
+            *pixel_position(goal.x, goal.y, self._grid.transform),
+            cost=0.0,
+            parent_index=-1,
+        )
+
+        goals = list()
         for index, trace_point in enumerate(intermediate_goals):
+
             goal = GoalNode(
-                trace_point.x,
-                trace_point.y,
-                0.0,
-                -1,
+                *pixel_position(trace_point.x, trace_point.y, self._grid.transform),
+                cost=0.0,
+                parent_index=-1,
                 is_intermediate=True,
             )
-            intermediate_goal_nodes.append(goal)
-        intermediate_goal_nodes.append(goal_node)
-        return start_node, goal_node, intermediate_goal_nodes
+
+            if not self._grid.collision_check(goal.x, goal.y):
+                goals.append(goal)
+
+        goals.append(goal_node)
+        return start_node, goal_node, goals
+
+    def make_data(self, trace: list) -> Tuple[StartNode, GoalNode, list]:
+        assert len(trace) >= 2, (
+            "Expected at least two trace points" "got %s",
+            (len(trace),),
+        )
+        assert all(
+            [isinstance(trace_point, TracePoint) for trace_point in trace]
+        ), "Expected all points to be TracePoint, got types %s." % (
+            ", ".join([str(type(v)) for v in trace])
+        )
+        return self.generate_nodes(trace[0], trace[-1], trace[1:-1])
+
+    def filter_trace(self, trace: list) -> List[TracePoint]:
+        assert len(trace) >= 2, (
+            "Expected at least two trace points" "got %s",
+            (len(trace),),
+        )
+        assert all(
+            [isinstance(trace_point, TracePoint) for trace_point in trace]
+        ), "Expected all points to be TracePoint, got types %s." % (
+            ", ".join([str(type(v)) for v in trace])
+        )
+        return [
+            trace_point
+            for trace_point in trace
+            if not self._grid.collision_check(
+                *pixel_position(trace_point.x, trace_point.y, self._grid.transform)
+            )
+        ]
+
+    def animate_obstacle(self):
+        x, y = np.where(self._grid.obstacle == True)
+        plt.plot(x, y, ".k")
 
 
 class AStar(Navigator):
-    def __init__(self, grid, obstacle: Obstacle):
-        super().__init__(grid, obstacle)
+    def __init__(self, grid):
+        super().__init__(grid)
 
     def pre_compute_goal_heuristics(self):
         pass
 
-    def path(
-        self,
-        start: TracePoint,
-        goal: TracePoint,
-        intermediate_goal: list,
-        space_threshold=5,
-    ):
+    def path(self, trace: list, space_threshold=30, filter_trace=True):
         """
 
-        :param start:
-        :param goal:
-        :param intermediate_goal:
+        The first point of the trace will be assigned as start and end point as the final goal
+        and all the points in between will be assigned as intermediate goal
+
+        :param filter_trace: bool, if the trace passed over the obstacle pixel, set this to true
+        this will remove such points which pass over obstacle zone
+        :param trace:
         :param space_threshold:
         :return:
         """
-        start, goal, goal_collection = self.generate_nodes(
-            start, goal, intermediate_goal
-        )
+
+        if filter_trace:
+            trace = self.filter_trace(trace)
+
+        start, goal, goal_collection = self.make_data(trace)
 
         connectivity_meta = self.node_connectivity(start, goal_collection)
 
@@ -325,7 +368,7 @@ class AStar(Navigator):
 
         while 1:
             if len(open_set) == 0:
-                print("Open set is empty..")
+                print("Couldn't Reach to Goal")
                 break
 
             grid_id = min(
@@ -352,8 +395,8 @@ class AStar(Navigator):
                     continue
 
             # show graph
-            if show_animation:  # pragma: no cover
-                plt.plot(self._grid.x_pos(current.x), self._grid.y_pos(current.y), "xc")
+            if SHOW_ANIMATION:  # pragma: no cover
+                plt.plot(current.x, current.y, "xc")
                 # for stopping simulation with the esc key.
                 plt.gcf().canvas.mpl_connect(
                     "key_release_event",
@@ -412,7 +455,7 @@ class AStar(Navigator):
                 new_node_grid_id = self._grid.grid_index(node.x, node.y)
 
                 # SKIP NODE WHEN OBSTACLE ENCOUNTERED
-                if not self.obstacle_check(self._grid, self._obstacle.obs_map, node):
+                if not self.obstacle_check(self._grid, node):
                     continue
 
                 # SKIP IF MARKED VISITED
@@ -469,27 +512,26 @@ class AStar(Navigator):
 
         return weight * cost
 
-    def obstacle_check(self, grid, obstacle_map, node: Node) -> bool:
+    def obstacle_check(self, grid, node: Node) -> bool:
         """
 
         :param grid:
-        :param obstacle_map:
         :param node:
         :return:
         """
-        px = grid.x_pos(node.x)
-        py = grid.y_pos(node.y)
+        px = node.x
+        py = node.y
 
-        if px < grid.minx:
+        if px < grid.min_x:
             return False
-        elif py < grid.miny:
+        elif py < grid.min_y:
             return False
-        elif px >= grid.maxx:
+        elif px >= grid.max_x:
             return False
-        elif py >= grid.maxy:
+        elif py >= grid.max_y:
             return False
         # collision check
-        if obstacle_map[node.x][node.y]:
+        if grid.obstacle[node.x][node.y]:
             return False
         return True
 
@@ -501,13 +543,13 @@ class AStar(Navigator):
         :param closed_set:
         :return:
         """
-        rx, ry = [grid.x_pos(goal.x)], [grid.y_pos(goal.y)]
+        rx, ry = [goal.x], [goal.y]
         parent_index = goal.parent_index
         while parent_index != -1:
             n = closed_set[parent_index]
 
-            rx.append(grid.x_pos(n.x))
-            ry.append(grid.y_pos(n.y))
+            rx.append(n.x)
+            ry.append(n.y)
 
             parent_index = n.parent_index
         return rx, ry

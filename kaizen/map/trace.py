@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import geopandas
+from geopandas import GeoDataFrame
 
 from kaizen.utils.gis import (
     geom_check,
@@ -53,14 +54,12 @@ class Traces(defaultdict):
             TracePoint(x, y, trace_point_id, trace_id, SimpleNamespace(**kwargs))
         )
 
-    def from_file(self, path: str):
+    def from_data_frame(self, trace_data: GeoDataFrame):
         """
 
-        :param path:
+        :param trace_data:
         :return:
         """
-
-        trace_data = geopandas.read_file(path)
 
         if geom_check(trace_data, "Point"):
 
@@ -104,10 +103,10 @@ class Traces(defaultdict):
                         trace_id=trace_id.int,
                         **feature_property,
                     )
-            else:
-                raise ValueError(
-                    "Expected Geometry Type to be in ['Point', 'LineString']"
-                )
+        else:
+            raise ValueError(
+                "Expected Geometry Type to be in ['Point', 'LineString']"
+            )
 
         return self
 
@@ -182,13 +181,13 @@ class Traces(defaultdict):
         return self
 
 
-def traces_from_file(path: str) -> Traces:
+def traces_from_data_frame(trace_data: GeoDataFrame) -> Traces:
     """
     Generate traces from GeoSpatial LineString or Point
-    :param path:
+    :param trace_data:
     :return:
     """
-    return Traces().from_file(path)
+    return Traces().from_data_frame(trace_data)
 
 
 def single_trace(trace: list) -> Traces:
