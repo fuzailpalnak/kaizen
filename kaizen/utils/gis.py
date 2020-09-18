@@ -1,8 +1,14 @@
+from typing import Union, Tuple
+import numpy as np
+import ogr
+import osr
+
+import geopandas
 from affine import Affine
 from geopandas import GeoDataFrame
 from pandas import Series
 from rasterio.transform import rowcol, xy
-from shapely.geometry import mapping, box
+from shapely.geometry import mapping, box, Point, Polygon
 
 
 def decompose_data_frame_row(row: Series):
@@ -79,3 +85,77 @@ def get_maximum_bound(data_frame_1: GeoDataFrame, data_frame_2: GeoDataFrame):
         if box(*data_frame_1.total_bounds).area > box(*data_frame_2.total_bounds).area
         else data_frame_2.total_bounds
     )
+
+
+def compute_diagonal_distance_of_extent(data_frame: GeoDataFrame) -> float:
+    min_x, min_y, max_x, max_y = total_bounds(data_frame)
+    return Point((min_x, min_y)).distance(Point((max_x, max_y)))
+
+
+def my_crs(crs: str):
+    return crs in ["epsg:26910", "epsg:32649"]
+
+
+def supported_crs(data_frame: GeoDataFrame):
+    return data_frame.crs in ["epsg:26910", "epsg:32649"]
+
+
+def read_data_frame(path: str):
+    return geopandas.read_file(path)
+
+
+def crs_conversion(crs_from: str, crs_to: str, coordinate: tuple) -> Tuple[float, float]:
+    # https://gis.stackexchange.com/questions/78838/converting-projected-coordinates-to-lat-lon-using-python
+
+    assert len(coordinate) == 2, (
+        "Expected 'point' in format '(X, Y)'"
+        "got %s", (coordinate, )
+    )
+
+    crs_from = int(crs_from.split(":")[-1])
+    crs_to = int(crs_to.split(":")[-1])
+
+    point = ogr.Geometry(ogr.wkbPoint)
+    point.AddPoint(coordinate[0],  coordinate[1])
+
+    in_spatial_ref = osr.SpatialReference()
+    in_spatial_ref.ImportFromEPSG(crs_from)
+
+    out_spatial_ref = osr.SpatialReference()
+    out_spatial_ref.ImportFromEPSG(crs_to)
+
+    coordinate_transform = osr.CoordinateTransformation(in_spatial_ref, out_spatial_ref)
+
+    point.Transform(coordinate_transform)
+    return point.GetX(), point.GetY()
+
+
+def bounding_box_crs_conversion(bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326") -> list:
+
+    assert (len(bounds) == 1), (
+        "Expected a single bounding box"
+        "got %s", (len(bounds))
+    )
+    assert my_crs(crs_to), (
+        "CRS Provided not in supported list"
+        "Expected %s got %s", (['epsg:26910', 'epsg:32649'], crs_to, )
+    )
+    converted_boundary = list()
+    for point in bounds[0]:
+        converted_boundary.append(crs_conversion(crs_from, crs_to, (point[0], point[1])))
+
+    return converted_boundary
+
+
+def convert_and_get_extent(bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326") -> tuple:
+
+    assert (len(bounds) == 1), (
+        "Expected a single bounding box"
+        "got %s", (len(bounds))
+    )
+    assert my_crs(crs_to), (
+        "CRS Provided not in supported list"
+        "Expected %s got %s", (['epsg:26910', 'epsg:32649'], crs_to, )
+    )
+
+    return Polygon(bounding_box_crs_conversion(bounds, crs_to, crs_from)).bounds

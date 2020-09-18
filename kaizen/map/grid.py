@@ -1,3 +1,5 @@
+from typing import Union
+
 import cv2
 import numpy as np
 
@@ -9,7 +11,7 @@ from kaizen.utils.gis import (
     geom_check,
     decompose_data_frame_row,
     generate_affine,
-    pixel_position,
+    pixel_position, supported_crs,
 )
 
 
@@ -83,6 +85,13 @@ class Grid:
         """
         pass
 
+    def extent_check(self, bounds: Union[np.ndarray, list, tuple]) -> bool:
+        min_x, min_y, max_x, max_y = bounds
+        row_start, col_start = pixel_position(min_x, max_y, self.transform)
+        row_stop, col_stop = pixel_position(max_x, min_y, self.transform)
+        return (self.width > abs(round((row_stop - row_start) / self.resolution))
+                and self.height > abs(round((col_stop - col_start) / self.resolution)))
+
 
 class PixelGrid(Grid):
     """
@@ -98,22 +107,34 @@ class PixelGrid(Grid):
     ):
         super().__init__(bounds, resolution, dimension, transform)
 
-        self._transform = transform
-
-    @property
-    def transform(self):
-        return self._transform
-
     @classmethod
-    def pixel_grid(cls, resolution: int, grid_bounds: tuple):
+    def pixel_grid(cls, resolution: int, grid_bounds: Union[np.ndarray, list, tuple]):
         """
         Generate a Pixel grid
 
-        :param grid_bounds:
+        :param grid_bounds: the region in which the navigation has to be done
+        should be large enough to cover all possible path,
+        How to choose bounds - if running on obstacle and trace file, choose the extent such that they
+        both fit in the extent
+
+        If running only on the trace file, then  choose the extent such that all possible path to explore can fit
+
+        NOTE - DON'T USE EXTENT OF INDIVIDUAL POLYGON, LINESTRING
+        NOTE - DON'T USE EXTENT OF THE FILE IF THE FILE JUST CONTAINS FEW GEOMETRIES CLOSE TO EACH OTHER
+
         :param resolution:
         :return:
         """
 
+        assert type(grid_bounds) in [np.ndarray, tuple, list], (
+            "Expected grid_bounds to be of type Tuple"
+            "got %s", (type(grid_bounds), )
+        )
+
+        assert type(resolution) is int, (
+            "Expected resolution to be of type int"
+            "got %s", (type(resolution), )
+        )
         min_x, min_y, max_x, max_y = grid_bounds
 
         grid_transform = generate_affine(min_x, max_y, resolution)
@@ -140,10 +161,19 @@ class PixelGrid(Grid):
         :return:
         """
 
+        assert supported_crs(obstacle_data_frame), (
+            "Supported CRS ['epsg:26910', 'epsg:32649']"
+            "got %s", (obstacle_data_frame.crs,)
+        )
+
         assert geom_check(
             obstacle_data_frame, "Polygon"
         ), "Expected all geometries in to be Polygon"
 
+        assert self.extent_check(obstacle_data_frame.total_bounds), (
+            "Expected the bounds of obstacle to fit in the Grid but the obstacle Bounds are Much Bigger"
+            " than the grid bounds"
+        )
         width, height = self.dimension
         extent = np.zeros([height, width], np.uint8)
 
@@ -160,7 +190,6 @@ class PixelGrid(Grid):
                     for bo in boundary_coordinates
                 ]
                 corner_points = np.array(corner_points[:-1], np.int32)
-                print(corner_points)
                 # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
                 cv2.drawContours(
                     extent,

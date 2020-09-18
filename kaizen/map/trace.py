@@ -9,7 +9,7 @@ from geopandas import GeoDataFrame
 
 from kaizen.utils.gis import (
     geom_check,
-    decompose_data_frame_row,
+    decompose_data_frame_row, supported_crs, read_data_frame,
 )
 
 
@@ -187,6 +187,10 @@ def traces_from_data_frame(trace_data: GeoDataFrame) -> Traces:
     :param trace_data:
     :return:
     """
+    assert supported_crs(trace_data), (
+        "Supported CRS ['epsg:26910', 'epsg:32649']"
+        "got %s", (trace_data.crs,)
+    )
     return Traces().from_data_frame(trace_data)
 
 
@@ -203,7 +207,7 @@ def single_trace(trace: list) -> Traces:
     return Traces().single_trace(trace)
 
 
-def multiple_traces(traces: list):
+def multiple_traces(traces: list) -> Traces:
     """
     Generate collection of trace from List of Coordinates
     [
@@ -219,3 +223,12 @@ def multiple_traces(traces: list):
     """
 
     return Traces().multiple_trace(traces)
+
+
+def trace_from_file(path: str) -> Traces:
+    """
+
+    :param path:
+    :return:
+    """
+    return traces_from_data_frame(read_data_frame(path))

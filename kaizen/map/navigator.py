@@ -17,7 +17,7 @@ from kaizen.utils.numerical import (
     manhattan_distance,
 )
 
-SHOW_ANIMATION = True
+SHOW_ANIMATION = False
 
 
 class Node:
@@ -100,7 +100,7 @@ class Navigator:
 
         self._direction = Robot().direction()
 
-    def node_connectivity(
+    def _node_connectivity(
         self, start_node: StartNode, goal_collection: list
     ) -> OrderedDict:
         """
@@ -161,7 +161,7 @@ class Navigator:
         raise NotImplementedError
 
     @staticmethod
-    def search_space(goal, start, potential):
+    def _search_space(goal, start, potential):
         """
 
         :param goal:
@@ -248,7 +248,7 @@ class Navigator:
         """
         raise NotImplementedError
 
-    def generate_nodes(
+    def _generate_nodes(
         self, start: TracePoint, goal: TracePoint, intermediate_goals: list
     ) -> Tuple[StartNode, GoalNode, list]:
         """
@@ -295,7 +295,7 @@ class Navigator:
         goals.append(goal_node)
         return start_node, goal_node, goals
 
-    def make_data(self, trace: list) -> Tuple[StartNode, GoalNode, list]:
+    def _make_data(self, trace: list) -> Tuple[StartNode, GoalNode, list]:
         assert len(trace) >= 2, (
             "Expected at least two trace points" "got %s",
             (len(trace),),
@@ -305,9 +305,9 @@ class Navigator:
         ), "Expected all points to be TracePoint, got types %s." % (
             ", ".join([str(type(v)) for v in trace])
         )
-        return self.generate_nodes(trace[0], trace[-1], trace[1:-1])
+        return self._generate_nodes(trace[0], trace[-1], trace[1:-1])
 
-    def filter_trace(self, trace: list) -> List[TracePoint]:
+    def _filter_trace(self, trace: list) -> List[TracePoint]:
         assert len(trace) >= 2, (
             "Expected at least two trace points" "got %s",
             (len(trace),),
@@ -351,11 +351,11 @@ class AStar(Navigator):
         """
 
         if filter_trace:
-            trace = self.filter_trace(trace)
+            trace = self._filter_trace(trace)
 
-        start, goal, goal_collection = self.make_data(trace)
+        start, goal, goal_collection = self._make_data(trace)
 
-        connectivity_meta = self.node_connectivity(start, goal_collection)
+        connectivity_meta = self._node_connectivity(start, goal_collection)
 
         open_set, closed_set = dict(), dict()
         open_set[self._grid.grid_index(start.x, start.y)] = start
@@ -387,9 +387,9 @@ class AStar(Navigator):
                 # VEC(start -> previous_goal).dot(VEC(start -> current_goal)) is nothing but self.navigate_space
 
                 if (
-                    self.search_space(previous_goal, start, current)
+                    self._search_space(previous_goal, start, current)
                     > self.navigate_space
-                    or self.search_space(n_goal, start, current) > self.navigate_space
+                    or self._search_space(n_goal, start, current) > self.navigate_space
                 ):
                     del open_set[grid_id]
                     continue
@@ -425,7 +425,7 @@ class AStar(Navigator):
                     n_goal = goal_collection[0]
 
                     # CALCULATE THE SEARCH SPACE FOR NEW GOAL
-                    self.navigate_space = self.search_space(
+                    self.navigate_space = self._search_space(
                         n_goal, start, intermediate_goal
                     )
 

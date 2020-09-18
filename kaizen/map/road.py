@@ -8,7 +8,7 @@ from shapely.strtree import STRtree
 
 from kaizen.utils.gis import (
     geom_check,
-    decompose_data_frame_row,
+    decompose_data_frame_row, compute_diagonal_distance_of_extent, supported_crs, read_data_frame,
 )
 
 
@@ -54,8 +54,9 @@ class RoadNetwork:
     INFORMATION ASSOCIATED TO THE ROAD GEOMETRY WHICH IS TO BE USED AS BASE FOR MATCHING
     """
 
-    def __init__(self, road_table):
+    def __init__(self, road_table, maximum_distance):
         self._road_table = road_table
+        self.maximum_distance = maximum_distance
 
         self.tree = self.generate_tree()
         self.graph = self.generate_graph()
@@ -129,7 +130,12 @@ def road_network(path: str) -> RoadNetwork:
     :return:
     """
 
-    road_data = geopandas.read_file(path)
+    road_data = read_data_frame(path)
+    assert supported_crs(road_data), (
+        "Supported CRS ['epsg:26910', 'epsg:32649']"
+        "got %s", (road_data.crs,)
+    )
+
     road_table = RoadTable()
 
     assert geom_check(
@@ -140,4 +146,4 @@ def road_network(path: str) -> RoadNetwork:
         feature_geometry, feature_property = decompose_data_frame_row(feature)
         road_table.add(idx, feature_property, feature_geometry)
 
-    return RoadNetwork(road_table=road_table)
+    return RoadNetwork(road_table=road_table, maximum_distance=compute_diagonal_distance_of_extent(road_data))
