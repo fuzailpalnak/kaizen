@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from kaizen.map.robot import Robot
 from kaizen.map.trace import TracePoint
-from kaizen.utils.gis import pixel_position
+from kaizen.utils.gis import pixel_position, spatial_position
 from kaizen.utils.numerical import (
     angle_between_vector,
     vector,
@@ -216,7 +216,7 @@ class Navigator:
         self,
         trace: list,
         space_threshold: float,
-    ):
+    ) -> list:
         """
 
         :param trace:
@@ -238,7 +238,7 @@ class Navigator:
     def obstacle_check(self, grid, node: Node) -> bool:
         raise NotImplementedError
 
-    def final_path(self, grid, goal: GoalNode, closed_set: dict):
+    def final_path(self, grid, goal: GoalNode, closed_set: dict) -> Tuple[List, List]:
         """
 
         :param grid:
@@ -247,6 +247,21 @@ class Navigator:
         :return:
         """
         raise NotImplementedError
+
+    def _spatial_path(self, rx: list, ry: list):
+        assert len(rx) == len(ry), (
+            "Expected Equal number of points in rx and ry"
+            "got %s and %s", (len(rx), len(ry), )
+        )
+
+        assert (len(rx) > 1 and len(ry) > 1), (
+            "Expected to have more than one coordinates"
+        )
+        spatial_coordinate = list()
+        for x, y in zip(rx, ry):
+            spatial_coordinate.append(spatial_position(x, y, self._grid.transform))
+
+        return spatial_coordinate
 
     def _generate_nodes(
         self, start: TracePoint, goal: TracePoint, intermediate_goals: list
@@ -337,7 +352,7 @@ class AStar(Navigator):
     def pre_compute_goal_heuristics(self):
         pass
 
-    def path(self, trace: list, space_threshold=30, filter_trace=True):
+    def path(self, trace: list, space_threshold=30, filter_trace=True) -> list:
         """
 
         The first point of the trace will be assigned as start and end point as the final goal
@@ -479,9 +494,7 @@ class AStar(Navigator):
                         # BEST PATH FOUND
                         open_set[new_node_grid_id] = node
 
-        rx, ry = self.final_path(self._grid, n_goal, closed_set)
-
-        return rx, ry
+        return self._spatial_path(*self.final_path(self._grid, n_goal, closed_set))
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
         """
@@ -535,7 +548,7 @@ class AStar(Navigator):
             return False
         return True
 
-    def final_path(self, grid, goal: GoalNode, closed_set: dict):
+    def final_path(self, grid, goal: GoalNode, closed_set: dict) -> Tuple[List, List]:
         """
 
         :param grid:
