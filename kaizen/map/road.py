@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import geopandas
 import networkx as nx
+import rtree
 from shapely.geometry import shape, Polygon
 from shapely.strtree import STRtree
 
@@ -22,33 +23,47 @@ class RoadTable(OrderedDict):
 
     def __init__(self):
         super().__init__()
-        self._entry = namedtuple("Road", ["fid", "property", "geometry"])
+        self._entry = namedtuple("Road", ["fid", "property", "geometry", "weight"])
 
-    def add(self, feature_id: int, feature_property: dict, feature_geometry: dict):
+    def add(
+        self,
+        feature_id: int,
+        feature_property: dict,
+        feature_geometry: dict,
+        weight: float,
+    ):
         assert (
             feature_id is not None
             and feature_property is not None
             and feature_geometry is not None
-        ), "Expected ['feature_id', 'feature_property', 'feature_geometry'] to be not None"
+            and weight is not None
+        ), "Expected ['feature_id', 'feature_property', 'feature_geometry', 'weight'] to be not None"
 
         assert type(feature_id) is int, (
-            "Expected type to be 'int'," "got %s",
+            "Expected 'feature_id' type to be 'int'," "got %s",
             (type(feature_id),),
         )
 
         assert type(feature_property) is dict, (
-            "Expected type to be 'dict'," "got %s",
+            "Expected 'feature_property' type to be 'dict'," "got %s",
             (type(feature_property),),
         )
 
         assert type(feature_geometry) is dict, (
-            "Expected type to be 'dict'," "got %s",
+            "Expected 'feature_geometry' type to be 'dict'," "got %s",
             (type(feature_geometry),),
         )
+
+        assert type(weight) is float, (
+            "Expected 'weight' type to be 'float'," "got %s",
+            (type(weight),),
+        )
+
         self[feature_id] = self._entry(
             fid=feature_id,
             property=SimpleNamespace(**feature_property),
             geometry=feature_geometry,
+            weight=weight,
         )
 
 
@@ -61,8 +76,8 @@ class RoadNetwork:
         self._road_table = road_table
         self.maximum_distance = maximum_distance
 
-        self.tree = self.generate_tree()
-        self.graph = self.generate_graph()
+        self.tree = self._generate_tree()
+        self.graph = self._generate_graph()
 
     def intersection(self, geometry: Polygon):
         """
@@ -71,10 +86,17 @@ class RoadNetwork:
         :return:
         """
         assert type(geometry) == Polygon, (
-            "Expected type to be 'Polygon'" "got %s",
+            "Expected 'geometry' type to be 'Polygon'" "got %s",
             (type(geometry),),
         )
-        return [road for road in self.tree.query(geometry) if road.intersects(geometry)]
+        intersection_info = dict()
+        intersecting_fid = list(self.tree.intersection(geometry.bounds))
+        for fid in intersecting_fid:
+            entry = self._road_table[fid]
+            road = shape(entry.geometry)
+            if road.intersects(geometry):
+                intersection_info[fid] = road
+        return intersection_info
 
     def geometry(self, fid):
         """
@@ -92,7 +114,7 @@ class RoadNetwork:
         """
         return self._road_table[fid]
 
-    def generate_graph(self):
+    def _generate_graph(self):
         """
         Generate DiGraph of the connected road network
         :return:
@@ -106,15 +128,13 @@ class RoadNetwork:
             for coordinates in line_string_coordinate[1:-1]:
                 intermediate_nodes.append((coordinates[0], coordinates[1]))
 
-            # TODO instead of making assumption that the road are consecutive let teh data of connectivity come from
-            # the user
             road_graph.add_edges_from(
                 [
-                    (line_string_coordinate[0], line_string_coordinate[-1]),
+                    (entry.property.u, entry.property.v),
                 ],
                 intermediate_nodes=intermediate_nodes,
                 fid=entry.fid,
-                weight=shape(geometry).length,
+                weight=entry.weight,
             )
         return road_graph
 
@@ -127,15 +147,18 @@ class RoadNetwork:
     def get_geometry(self, start_node, end_node):
         return self.geometry(self.get_fid(start_node, end_node))
 
-    def generate_tree(self):
+    def get_graph_data(self, start_node, end_node):
+        return self.graph[start_node][end_node]
+
+    def _generate_tree(self):
         """
         Generate RTree for the road network
         :return:
         """
-        road_geometry = list()
+        index = rtree.index.Index()
         for _, entry in self._road_table.items():
-            road_geometry.append(shape(entry.geometry))
-        return STRtree(road_geometry)
+            index.insert(entry.fid, shape(entry.geometry).bounds)
+        return index
 
 
 def road_network(path: str) -> RoadNetwork:
@@ -159,9 +182,17 @@ def road_network(path: str) -> RoadNetwork:
 
     for idx, feature in road_data.iterrows():
         feature_geometry, feature_property = decompose_data_frame_row(feature)
+
+        assert "u" in feature_property and "v" in feature_property, (
+            "Expected 'u' and 'v' to be present in the property"
+            "indicating the start node and the end node of the provided"
+            "geometry"
+        )
         if "fid" in feature_property:
             idx = feature_property["fid"]
-        road_table.add(idx, feature_property, feature_geometry)
+        road_table.add(
+            idx, feature_property, feature_geometry, shape(feature_geometry).length
+        )
 
     return RoadNetwork(
         road_table=road_table,

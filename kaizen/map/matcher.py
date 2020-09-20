@@ -1,6 +1,6 @@
 import math
 import operator
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, namedtuple
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Tuple, Union, List
@@ -18,10 +18,10 @@ from kaizen.map.trace import Traces, TracePoint
 @dataclass
 class Candidate:
     candidate_id: Any
-    x: Any
-    y: Any
-    distance: Any
-    road: Any
+    x: float
+    y: float
+    distance: float
+    road: namedtuple
     trace: Any
 
 
@@ -39,7 +39,7 @@ class CandidatesPerTracePoint(list):
         y,
         candidate_id: str,
         distance: float,
-        road_information: Any,
+        road_information: namedtuple,
         trace_information: Any,
     ):
         """
@@ -68,16 +68,13 @@ class CandidatesPerTracePoint(list):
             (type(distance),),
         )
 
-        assert all(
-            element in road_information for element in ["weight", "start", "end"]
-        ), (
-            "Expected keys to be in road_information ['weight', 'start', 'end',]",
-            "got %s",
-            road_information,
-        )
+        assert hasattr(
+            road_information, "weight"
+        ), "Expected road information to have ['weight']"
 
-        if isinstance(road_information, dict):
-            road_information = SimpleNamespace(**road_information)
+        assert hasattr(road_information.property, "u") and hasattr(
+            road_information.property, "v"
+        ), ("Expected road to have start node 'u' and end node 'v'" "for every edge")
 
         if isinstance(trace_information, dict):
             trace_information = SimpleNamespace(**trace_information)
@@ -114,11 +111,10 @@ class Match:
         """
         tr_point = Point(trace_point.x, trace_point.y)
 
-        # TODO make use of rtree, which returns fids of intersected road geometries
         candidate_roads = self.road_network.intersection(tr_point.buffer(30))
-
         candidates_per_trace_points = CandidatesPerTracePoint()
-        for idx, candidate in enumerate(candidate_roads):
+        for idx, (fid, candidate) in enumerate(candidate_roads.items()):
+
             # [REFERENCE IN PAPER - Map-Matching for Low-Sampling-Rate GPS Trajectories]
             # DEFINITION 6 (LINE SEGMENT PROJECTION): THE LINE SEGMENT PROJECTION OF A POINT 𝑝 TO A ROAD SEGMENT
             # 𝑒 IS THE POINT 𝑐 ON 𝑒 SUCH THAT 𝑐 = ARG 𝑚𝑖𝑛∀ 𝑐𝑖∈𝑒 𝑑𝑖𝑠𝑡(𝑐𝑖, 𝑝) , WHERE 𝑑𝑖𝑠𝑡(𝑐𝑖, 𝑝) RETURNS THE DISTANCE
@@ -131,11 +127,6 @@ class Match:
             fraction = candidate.project(tr_point, normalized=True)
             project_point = candidate.interpolate(fraction, normalized=True)
 
-            # TODO Get Attributes from fids returned from the Rtree intersection and not from the graph
-            attr = self.road_network.graph[mapping(candidate)["coordinates"][0]][
-                mapping(candidate)["coordinates"][-1]
-            ]
-
             # https://gist.github.com/href/1319371
             # https://stackoverflow.com/questions/35282222/in-python-how-do-i-cast-a-class-object-to-a-dict/35282286
             candidates_per_trace_points.add(
@@ -143,13 +134,7 @@ class Match:
                 x=project_point.x,
                 y=project_point.y,
                 distance=fraction,
-                road_information={
-                    **attr,
-                    **{
-                        "start": mapping(candidate)["coordinates"][0],
-                        "end": mapping(candidate)["coordinates"][-1],
-                    },
-                },
+                road_information=self.road_network.entry(fid),
                 trace_information=trace_point,
             )
 
@@ -206,8 +191,8 @@ class Match:
 
             graph_distance = nx.astar_path_length(
                 self.road_network.graph,
-                previous_layer_candidate.road.end,
-                current_layer_candidate.road.start,
+                previous_layer_candidate.road.property.v,
+                current_layer_candidate.road.property.u,
             )
 
             # https://people.kth.se/~cyang/bib/fmm.pdf [Computation]
@@ -440,7 +425,9 @@ class Match:
         for previous, current in zip(matched_sequence, matched_sequence[1:]):
             road_ids = self._road_ids_along_shortest_path(
                 nx.astar_path(
-                    self.road_network.graph, previous.road.start, current.road.end
+                    self.road_network.graph,
+                    previous.road.property.u,
+                    current.road.property.v,
                 )
             )
             for road in road_ids:
