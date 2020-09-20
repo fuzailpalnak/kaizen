@@ -1,16 +1,15 @@
 from typing import Union, Tuple
 import numpy as np
-import ogr
-import osr
 
 import geopandas
 import visvalingamwyatt as vw
 
+from gdal import ogr, osr
 from affine import Affine
 from geopandas import GeoDataFrame
 from pandas import Series
 from rasterio.transform import rowcol, xy
-from shapely.geometry import mapping, box, Point, Polygon, LineString
+from shapely.geometry import mapping, box, Point, Polygon
 
 
 def decompose_data_frame_row(row: Series):
