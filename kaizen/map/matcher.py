@@ -1,9 +1,9 @@
 import math
 import operator
-from collections import namedtuple, defaultdict
+from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Tuple, Union, List
 
 import networkx as nx
 from shapely.geometry import Point, mapping
@@ -102,113 +102,9 @@ class Candidates(defaultdict):
         self[idx] = candidate_per_trace_point
 
 
-class TransitionTable(dict):
-    def __init__(self):
-        super().__init__()
-        self._entry = namedtuple(
-            "TransitionEntry",
-            [
-                "previous",
-                "current",
-                "shortest_path",
-                "shortest_distance",
-                "shortest_road_id",
-                "probability",
-            ],
-        )
-
-    @staticmethod
-    def generate_unique_key(
-        previous_candidate: Candidate, current_candidate: Candidate
-    ):
-        return hash(
-            str(previous_candidate.road.fid)
-            + str(previous_candidate.candidate_id)
-            + str(current_candidate.road.fid)
-            + str(current_candidate.candidate_id)
-        )
-
-    def add(
-        self,
-        previous_candidate: Candidate,
-        current_candidate: Candidate,
-        shortest_path: list,
-        shortest_distance: float,
-        shortest_road_id: list,
-        probability: float,
-    ):
-        self[
-            self.generate_unique_key(previous_candidate, current_candidate)
-        ] = self._entry(
-            previous=previous_candidate,
-            current=current_candidate,
-            shortest_path=shortest_path,
-            shortest_distance=shortest_distance,
-            shortest_road_id=shortest_road_id,
-            probability=probability,
-        )
-
-
-class Transition:
-    """
-    STORES ALL THE TRANSMISSION INFORMATION ABOUT THE STATES
-    [SHORTEST PATH, SHORTEST DISTANCE, SHORTEST ROAD-ID, PROBABILITY] OF TRAVELLING FROM ONE STATE TO ANOTHER
-    """
-
-    def __init__(self):
-        self._transition_table = TransitionTable()
-
-    def add_entry(
-        self,
-        previous_candidate: Candidate,
-        current_candidate: Candidate,
-        shortest_path: list,
-        shortest_distance: float,
-        shortest_road_id: list,
-        probability: float,
-    ):
-        """
-
-        :param previous_candidate: previous candidate
-        :param current_candidate:
-        :param shortest_path: shortest path need to be traversed to reach from previous_candidate to current_candidate
-        :param shortest_distance: shortest distance to be traversed to reach from previous_candidate to
-        current_candidate
-        :param shortest_road_id: road_ids of the shortest path
-        :param probability: probability of travelling from previous_candidate to current_candidate
-        :return:
-        """
-        assert (
-            previous_candidate is not None and current_candidate is not None
-        ), "Expected 'previous_candidate' and 'current_candidate' to be not None"
-
-        self._transition_table.add(
-            previous_candidate=previous_candidate,
-            current_candidate=current_candidate,
-            shortest_path=shortest_path,
-            shortest_distance=shortest_distance,
-            shortest_road_id=shortest_road_id,
-            probability=probability,
-        )
-
-    def table(self):
-        return self._transition_table
-
-    def entry(self, previous_candidate: Candidate, current_candidate: Candidate):
-        return self._transition_table[
-            self._transition_table.generate_unique_key(
-                previous_candidate, current_candidate
-            )
-        ]
-
-
 class Match:
     def __init__(self, road: RoadNetwork):
-        self._road = road
-        self._transition = Transition()
-
-        # TODO effienct way to decide self._max_distance
-        self._max_distance = 5000
+        self.road_network = road
 
     def _get_candidates(self, trace_point: TracePoint) -> CandidatesPerTracePoint:
         """
@@ -217,7 +113,9 @@ class Match:
         :return:
         """
         tr_point = Point(trace_point.x, trace_point.y)
-        candidate_roads = self._road.intersection(tr_point.buffer(30))
+
+        # TODO make use of rtree, which returns fids of intersected road geometries
+        candidate_roads = self.road_network.intersection(tr_point.buffer(30))
 
         candidates_per_trace_points = CandidatesPerTracePoint()
         for idx, candidate in enumerate(candidate_roads):
@@ -233,7 +131,8 @@ class Match:
             fraction = candidate.project(tr_point, normalized=True)
             project_point = candidate.interpolate(fraction, normalized=True)
 
-            attr = self._road.graph[mapping(candidate)["coordinates"][0]][
+            # TODO Get Attributes from fids returned from the Rtree intersection and not from the graph
+            attr = self.road_network.graph[mapping(candidate)["coordinates"][0]][
                 mapping(candidate)["coordinates"][-1]
             ]
 
@@ -265,14 +164,14 @@ class Match:
         """
         road_ids = list()
         for previous, current in zip(shortest_path, shortest_path[1:]):
-            fid = self._road.graph[previous][current]["fid"]
+            fid = self.road_network.get_fid(previous, current)
             if fid not in road_ids:
                 road_ids.append(fid)
         return road_ids
 
     def _path_information(
         self, previous_layer_candidate: Candidate, current_layer_candidate: Candidate
-    ) -> (float, list, list):
+    ) -> float:
         """
 
         :param previous_layer_candidate:
@@ -291,10 +190,7 @@ class Match:
         if previous_layer_candidate.road.fid == current_layer_candidate.road.fid:
             if previous_layer_candidate.distance >= current_layer_candidate.distance:
                 # IT INDICATES THAT THE VEHICLE LEAVES EDGE E THEN RE-ENTERING THE SAME EDGE E
-                # TODO CHANGE self._max_distance
-                shortest_distance = self._max_distance
-                shortest_path = None
-                road_ids_along_shortest_path = None
+                shortest_distance = self.road_network.maximum_distance
 
             elif previous_layer_candidate.distance < current_layer_candidate.distance:
                 # IT REPRESENTS THAT THE VEHICLE STAYS ON EDGE E WHEN MOVING FROM TRACE_POINT_1 TO  TRACE_POINT_2
@@ -302,11 +198,6 @@ class Match:
                 shortest_distance = Point(
                     previous_candidate_road_projected_point
                 ).distance(Point(current_candidate_road_projected_point))
-                shortest_path = [
-                    previous_layer_candidate.road.start,
-                    previous_layer_candidate.road.end,
-                ]
-                road_ids_along_shortest_path = [previous_layer_candidate.road.fid]
             else:
                 raise Exception("Something went horribly Wrong")
 
@@ -314,15 +205,9 @@ class Match:
             # CANDIDATES ARE ON DIFFERENT EDGES
 
             graph_distance = nx.astar_path_length(
-                self._road.graph,
+                self.road_network.graph,
                 previous_layer_candidate.road.end,
                 current_layer_candidate.road.start,
-            )
-
-            shortest_path = nx.astar_path(
-                self._road.graph,
-                previous_layer_candidate.road.start,
-                current_layer_candidate.road.end,
             )
 
             # https://people.kth.se/~cyang/bib/fmm.pdf [Computation]
@@ -335,12 +220,7 @@ class Match:
                 + current_layer_candidate.distance
             )
 
-            # TODO compute connected geometry instead of road ids
-            road_ids_along_shortest_path = self._road_ids_along_shortest_path(
-                shortest_path
-            )
-
-        return shortest_distance, shortest_path, road_ids_along_shortest_path
+        return shortest_distance
 
     @staticmethod
     def _observation_probability(x: float, y: float, trace_point: TracePoint) -> float:
@@ -378,34 +258,9 @@ class Match:
         :param current_layer_candidate:
         :return:
         """
-
-        (
-            shortest_distance,
-            shortest_path,
-            road_ids_along_shortest_path,
-            probability,
-        ) = self._transition_data(previous_layer_candidate, current_layer_candidate)
-
-        self._transition.add_entry(
-            previous_layer_candidate,
-            current_layer_candidate,
-            shortest_path=shortest_path,
-            shortest_distance=shortest_distance,
-            shortest_road_id=road_ids_along_shortest_path,
-            probability=probability,
+        shortest_distance = self._path_information(
+            previous_layer_candidate, current_layer_candidate
         )
-
-        return probability
-
-    def _transition_data(
-        self, previous_layer_candidate: Candidate, current_layer_candidate: Candidate
-    ) -> (float, list, list, float):
-
-        (
-            shortest_distance,
-            shortest_path,
-            road_ids_along_shortest_path,
-        ) = self._path_information(previous_layer_candidate, current_layer_candidate)
 
         euclidean_distance = spatial.distance.euclidean(
             [
@@ -418,12 +273,7 @@ class Match:
             ],
         )
 
-        return (
-            shortest_distance,
-            shortest_path,
-            road_ids_along_shortest_path,
-            euclidean_distance / shortest_distance,
-        )
+        return euclidean_distance / shortest_distance
 
     def _construct_graph(self, candidates: Candidates) -> nx.DiGraph:
         """
@@ -491,7 +341,9 @@ class Match:
         return graph
 
     @staticmethod
-    def _find_matched_sequence(graph: nx.DiGraph, candidates: Candidates) -> list:
+    def _find_matched_sequence(
+        graph: nx.DiGraph, candidates: Candidates
+    ) -> List[Candidate]:
         """
         FIND THE MATCHED SEQUENCE FROM GIVEN THE TRANSMISSION AND OBSERVATION PROBABILITIES
 
@@ -563,7 +415,7 @@ class Match:
 
         return matched_sequence
 
-    def _until_match(self, candidates: Candidates) -> list:
+    def _until_match(self, candidates: Candidates) -> List[Candidate]:
         """
         CANDIDATES CONTAINS COLLECTION OF CANDIDATES FOR EACH TRACE REC PRESENT IN THE TRACE
         CANDIDATES = {TRACE_REC_UUID_1: [CANDIDATES FOR TRACE_REC_UUID_1],
@@ -579,17 +431,26 @@ class Match:
         matched_sequence = self._find_matched_sequence(graph, candidates)
         return matched_sequence
 
-    def _get_connected_road_geometry(self, matched_sequence: list) -> list:
-        # TODO refactor here for finding connected roads
+    def _get_connected_road_geometry(
+        self, trace_id, matched_sequence: List[Candidate]
+    ) -> Tuple[Union[defaultdict, list], Union[defaultdict, OrderedDict]]:
+        connected_road = defaultdict(list)
+        connected_coordinates = OrderedDict()
 
-        connected_road_path = list()
         for previous, current in zip(matched_sequence, matched_sequence[1:]):
-            entry = self._transition.entry(previous, current)
-            for road in entry.shortest_road_id:
-                if int(road) not in connected_road_path:
-                    connected_road_path.append(int(road))
+            road_ids = self._road_ids_along_shortest_path(
+                nx.astar_path(
+                    self.road_network.graph, previous.road.start, current.road.end
+                )
+            )
+            for road in road_ids:
+                if int(road) not in connected_road[int(trace_id)]:
+                    connected_road[int(trace_id)].append(int(road))
+                    connected_coordinates[int(road)] = self.road_network.geometry(
+                        int(road)
+                    )["coordinates"]
 
-        return connected_road_path
+        return connected_road, connected_coordinates
 
     def match(self, trace: Traces):
 
@@ -612,8 +473,10 @@ class Match:
 
             # FIND A MATCH FOR A SINGLE TRACE
             matched_sequence = self._until_match(candidates)
-            connected_path = self._get_connected_road_geometry(matched_sequence)
-            yield trace_id, connected_path
+            connected_road, connected_coordinates = self._get_connected_road_geometry(
+                trace_id, matched_sequence
+            )
+            yield connected_road, connected_coordinates
 
     @classmethod
     def init(cls, road_network_file: str):

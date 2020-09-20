@@ -8,7 +8,10 @@ from shapely.strtree import STRtree
 
 from kaizen.utils.gis import (
     geom_check,
-    decompose_data_frame_row, compute_diagonal_distance_of_extent, supported_crs, read_data_frame,
+    decompose_data_frame_row,
+    compute_diagonal_distance_of_extent,
+    supported_crs,
+    read_data_frame,
 )
 
 
@@ -102,6 +105,9 @@ class RoadNetwork:
             line_string_coordinate = geometry["coordinates"]
             for coordinates in line_string_coordinate[1:-1]:
                 intermediate_nodes.append((coordinates[0], coordinates[1]))
+
+            # TODO instead of making assumption that the road are consecutive let teh data of connectivity come from
+            # the user
             road_graph.add_edges_from(
                 [
                     (line_string_coordinate[0], line_string_coordinate[-1]),
@@ -111,6 +117,15 @@ class RoadNetwork:
                 weight=shape(geometry).length,
             )
         return road_graph
+
+    def get_intermediate_nodes(self, start_node, end_node):
+        return self.graph[start_node][end_node]["intermediate_nodes"]
+
+    def get_fid(self, start_node, end_node):
+        return self.graph[start_node][end_node]["fid"]
+
+    def get_geometry(self, start_node, end_node):
+        return self.geometry(self.get_fid(start_node, end_node))
 
     def generate_tree(self):
         """
@@ -132,8 +147,8 @@ def road_network(path: str) -> RoadNetwork:
 
     road_data = read_data_frame(path)
     assert supported_crs(road_data), (
-        "Supported CRS ['epsg:26910', 'epsg:32649']"
-        "got %s", (road_data.crs,)
+        "Supported CRS ['epsg:26910', 'epsg:32649']" "got %s",
+        (road_data.crs,),
     )
 
     road_table = RoadTable()
@@ -144,6 +159,11 @@ def road_network(path: str) -> RoadNetwork:
 
     for idx, feature in road_data.iterrows():
         feature_geometry, feature_property = decompose_data_frame_row(feature)
+        if "fid" in feature_property:
+            idx = feature_property["fid"]
         road_table.add(idx, feature_property, feature_geometry)
 
-    return RoadNetwork(road_table=road_table, maximum_distance=compute_diagonal_distance_of_extent(road_data))
+    return RoadNetwork(
+        road_table=road_table,
+        maximum_distance=compute_diagonal_distance_of_extent(road_data),
+    )

@@ -9,7 +9,9 @@ from geopandas import GeoDataFrame
 
 from kaizen.utils.gis import (
     geom_check,
-    decompose_data_frame_row, supported_crs, read_data_frame,
+    decompose_data_frame_row,
+    supported_crs,
+    read_data_frame,
 )
 
 
@@ -104,9 +106,7 @@ class Traces(defaultdict):
                         **feature_property,
                     )
         else:
-            raise ValueError(
-                "Expected Geometry Type to be in ['Point', 'LineString']"
-            )
+            raise ValueError("Expected Geometry Type to be in ['Point', 'LineString']")
 
         return self
 
@@ -188,8 +188,8 @@ def traces_from_data_frame(trace_data: GeoDataFrame) -> Traces:
     :return:
     """
     assert supported_crs(trace_data), (
-        "Supported CRS ['epsg:26910', 'epsg:32649']"
-        "got %s", (trace_data.crs,)
+        "Supported CRS ['epsg:26910', 'epsg:32649']" "got %s",
+        (trace_data.crs,),
     )
     return Traces().from_data_frame(trace_data)
 
