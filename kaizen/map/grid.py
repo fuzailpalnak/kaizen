@@ -1,18 +1,25 @@
-from typing import Union
+import random
+from typing import Union, List
 
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 from affine import Affine
 from geopandas import GeoDataFrame
 from shapely.geometry import Polygon, mapping
 
+from kaizen.map.trace import TracePoint
 from kaizen.utils.gis import (
     geom_check,
     decompose_data_frame_row,
     generate_affine,
-    pixel_position, supported_crs,
+    pixel_position,
+    supported_crs,
+    spatial_position,
 )
+
+ANIMATION = False
 
 
 class Grid:
@@ -73,6 +80,12 @@ class Grid:
         """
         return self.obstacle[x][y]
 
+    def pixel_pos(self, x, y):
+        return pixel_position(x, y, self.transform)
+
+    def spatial_pos(self, x, y):
+        return spatial_position(x, y, self.transform)
+
     def add_obstacle(
         self, obstacle_data_frame: GeoDataFrame, extend_boundary_pixel: int
     ):
@@ -87,10 +100,80 @@ class Grid:
 
     def extent_check(self, bounds: Union[np.ndarray, list, tuple]) -> bool:
         min_x, min_y, max_x, max_y = bounds
-        row_start, col_start = pixel_position(min_x, max_y, self.transform)
-        row_stop, col_stop = pixel_position(max_x, min_y, self.transform)
-        return (self.width > abs(round((row_stop - row_start) / self.resolution))
-                and self.height > abs(round((col_stop - col_start) / self.resolution)))
+        row_start, col_start = self.pixel_pos(min_x, max_y)
+        row_stop, col_stop = self.pixel_pos(max_x, min_y)
+        return self.width > abs(
+            round((row_stop - row_start) / self.resolution)
+        ) and self.height > abs(round((col_stop - col_start) / self.resolution))
+
+    def spatial_path_from_x_y(self, rx: list, ry: list) -> list:
+        assert len(rx) == len(ry), (
+            "Expected Equal number of points in rx and ry" "got %s and %s",
+            (
+                len(rx),
+                len(ry),
+            ),
+        )
+
+        assert len(rx) > 1 and len(ry) > 1, "Expected to have more than one coordinates"
+        spatial_coordinate = list()
+        for x, y in zip(rx, ry):
+            spatial_coordinate.append(self.spatial_pos(x, y))
+
+        return spatial_coordinate
+
+    def pixel_path_from_x_y(self, px: list, py: list):
+        assert len(px) == len(py), (
+            "Expected Equal number of points in rx and ry" "got %s and %s",
+            (
+                len(px),
+                len(py),
+            ),
+        )
+
+        assert len(px) > 1 and len(px) > 1, "Expected to have more than one coordinates"
+        pixel_coordinate = list()
+        for x, y in zip(px, py):
+            pixel_coordinate.append(self.pixel_pos(x, y))
+
+        return pixel_coordinate
+
+    def filter_trace(self, trace: List[TracePoint]) -> List[TracePoint]:
+        assert len(trace) >= 2, (
+            "Expected at least two trace points" "got %s",
+            (len(trace),),
+        )
+        assert all(
+            [isinstance(trace_point, TracePoint) for trace_point in trace]
+        ), "Expected all points to be TracePoint, got types %s." % (
+            ", ".join([str(type(v)) for v in trace])
+        )
+        return [
+            trace_point
+            for trace_point in trace
+            if not self.collision_check(*self.pixel_pos(trace_point.x, trace_point.y))
+        ]
+
+    @staticmethod
+    def animate(x, y):
+        plt.plot(x, y, "xc")
+        # for stopping simulation with the esc key.
+        plt.gcf().canvas.mpl_connect(
+            "key_release_event",
+            lambda event: [exit(0) if event.key == "escape" else None],
+        )
+        if random.uniform(0, 1) > 0.50:
+            plt.pause(0.001)
+
+    @staticmethod
+    def show_animation():
+        global ANIMATION
+        ANIMATION = True
+
+    @staticmethod
+    def is_show_animation():
+        global ANIMATION
+        return ANIMATION
 
 
 class PixelGrid(Grid):
@@ -127,13 +210,13 @@ class PixelGrid(Grid):
         """
 
         assert type(grid_bounds) in [np.ndarray, tuple, list], (
-            "Expected grid_bounds to be of type Tuple"
-            "got %s", (type(grid_bounds), )
+            "Expected grid_bounds to be of type Tuple" "got %s",
+            (type(grid_bounds),),
         )
 
         assert type(resolution) is int, (
-            "Expected resolution to be of type int"
-            "got %s", (type(resolution), )
+            "Expected resolution to be of type int" "got %s",
+            (type(resolution),),
         )
         min_x, min_y, max_x, max_y = grid_bounds
 
@@ -162,8 +245,8 @@ class PixelGrid(Grid):
         """
 
         assert supported_crs(obstacle_data_frame), (
-            "Supported CRS ['epsg:26910', 'epsg:32649']"
-            "got %s", (obstacle_data_frame.crs,)
+            "Supported CRS ['epsg:26910', 'epsg:32649']" "got %s",
+            (obstacle_data_frame.crs,),
         )
 
         assert geom_check(
@@ -186,8 +269,7 @@ class PixelGrid(Grid):
                     "coordinates"
                 ]
                 corner_points = [
-                    pixel_position(bo[0], bo[1], self.transform)
-                    for bo in boundary_coordinates
+                    self.pixel_pos(bo[0], bo[1]) for bo in boundary_coordinates
                 ]
                 corner_points = np.array(corner_points[:-1], np.int32)
                 # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
@@ -201,3 +283,7 @@ class PixelGrid(Grid):
                 cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
 
         self.obstacle = extent.T >= 255
+
+        if ANIMATION:
+            x, y = np.where(self.obstacle == True)
+            plt.plot(x, y, ".k")

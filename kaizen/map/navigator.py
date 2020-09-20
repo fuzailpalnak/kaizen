@@ -1,14 +1,14 @@
 import math
 from collections import OrderedDict
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 import numpy as np
 
-import matplotlib.pyplot as plt
 
+from kaizen.map.grid import PixelGrid, Grid
 from kaizen.map.robot import Robot
 from kaizen.map.trace import TracePoint
-from kaizen.utils.gis import pixel_position, spatial_position
+from kaizen.utils.gis import line_simplify
 from kaizen.utils.numerical import (
     angle_between_vector,
     vector,
@@ -16,8 +16,6 @@ from kaizen.utils.numerical import (
     euclidean_distance,
     manhattan_distance,
 )
-
-SHOW_ANIMATION = False
 
 
 class Node:
@@ -85,9 +83,7 @@ class GoalNode(Node):
 
 class Navigator:
     # http://theory.stanford.edu/~amitp/GameProgramming/
-    def __init__(self, grid):
-        self._grid = grid
-
+    def __init__(self):
         #  INITIAL NAVIGATION SPACE IS SET TO 90 DEG, LATER ON THE PATH FINDER WILL
         #  ADJUST AS PER THE LOCATION OF GOAL NODE
 
@@ -161,7 +157,9 @@ class Navigator:
         raise NotImplementedError
 
     @staticmethod
-    def _search_space(goal, start, potential):
+    def _search_space(
+        goal: GoalNode, start: StartNode, potential: Union[GoalNode, StartNode, Node]
+    ):
         """
 
         :param goal:
@@ -177,7 +175,7 @@ class Navigator:
         return np.degrees(angle)
 
     @staticmethod
-    def diagonal(goal: GoalNode, node: Node, d1=1, d2=math.sqrt(2)):
+    def diagonal(goal: GoalNode, node: Node, d1=1, d2=math.sqrt(2)) -> float:
         """
 
         :param goal:
@@ -193,7 +191,7 @@ class Navigator:
         return diagonal_distance((node.x, node.y), (goal.x, goal.y), d1, d2)
 
     @staticmethod
-    def euclidean(goal: GoalNode, node: Node):
+    def euclidean(goal: GoalNode, node: Node) -> float:
         """
 
         :param goal:
@@ -203,7 +201,7 @@ class Navigator:
         return euclidean_distance((node.x, node.y), (goal.x, goal.y))
 
     @staticmethod
-    def manhattan(goal: GoalNode, node: Node):
+    def manhattan(goal: GoalNode, node: Node) -> float:
         """
 
         :param goal:
@@ -214,13 +212,15 @@ class Navigator:
 
     def path(
         self,
+        grid: Union[PixelGrid, Grid],
         trace: list,
-        space_threshold: float,
+        search_space_threshold: float,
     ) -> list:
         """
 
+        :param grid:
         :param trace:
-        :param space_threshold:
+        :param search_space_threshold:
         :return:
         """
         raise NotImplementedError
@@ -238,7 +238,9 @@ class Navigator:
     def obstacle_check(self, grid, node: Node) -> bool:
         raise NotImplementedError
 
-    def final_path(self, grid, goal: GoalNode, closed_set: dict) -> Tuple[List, List]:
+    def final_path(
+        self, grid: Union[PixelGrid, Grid], goal: GoalNode, closed_set: dict
+    ) -> Tuple[List, List]:
         """
 
         :param grid:
@@ -248,23 +250,12 @@ class Navigator:
         """
         raise NotImplementedError
 
-    def _spatial_path(self, rx: list, ry: list):
-        assert len(rx) == len(ry), (
-            "Expected Equal number of points in rx and ry"
-            "got %s and %s", (len(rx), len(ry), )
-        )
-
-        assert (len(rx) > 1 and len(ry) > 1), (
-            "Expected to have more than one coordinates"
-        )
-        spatial_coordinate = list()
-        for x, y in zip(rx, ry):
-            spatial_coordinate.append(spatial_position(x, y, self._grid.transform))
-
-        return spatial_coordinate
-
+    @staticmethod
     def _generate_nodes(
-        self, start: TracePoint, goal: TracePoint, intermediate_goals: list
+        grid: Union[PixelGrid, Grid],
+        start: TracePoint,
+        goal: TracePoint,
+        intermediate_goals: list,
     ) -> Tuple[StartNode, GoalNode, list]:
         """
         Generate nodes fro navigator to traverse
@@ -274,22 +265,21 @@ class Navigator:
         :param intermediate_goals:
         :return:
         """
-        assert not self._grid.collision_check(
-            *pixel_position(start.x, start.y, self._grid.transform)
-        ) and not self._grid.collision_check(
-            *pixel_position(start.x, start.y, self._grid.transform)
-        ), (
+
+        assert not grid.collision_check(
+            *grid.pixel_pos(start.x, start.y)
+        ) and not grid.collision_check(*grid.pixel_pos(start.x, start.y)), (
             "Expected Start Node and Goal Node to located outside the Obstacle Zone"
             "Apply 'filter_trace' to eliminate trace point which lie on obstacle"
         )
         start_node = StartNode(
-            *pixel_position(start.x, start.y, self._grid.transform),
+            *grid.pixel_pos(start.x, start.y),
             cost=0.0,
             parent_index=-1,
         )
 
         goal_node = GoalNode(
-            *pixel_position(goal.x, goal.y, self._grid.transform),
+            *grid.pixel_pos(goal.x, goal.y),
             cost=0.0,
             parent_index=-1,
         )
@@ -298,19 +288,21 @@ class Navigator:
         for index, trace_point in enumerate(intermediate_goals):
 
             goal = GoalNode(
-                *pixel_position(trace_point.x, trace_point.y, self._grid.transform),
+                *grid.pixel_pos(trace_point.x, trace_point.y),
                 cost=0.0,
                 parent_index=-1,
                 is_intermediate=True,
             )
 
-            if not self._grid.collision_check(goal.x, goal.y):
+            if not grid.collision_check(goal.x, goal.y):
                 goals.append(goal)
 
         goals.append(goal_node)
         return start_node, goal_node, goals
 
-    def _make_data(self, trace: list) -> Tuple[StartNode, GoalNode, list]:
+    def _make_data(
+        self, grid: Union[PixelGrid, Grid], trace: List[TracePoint]
+    ) -> Tuple[StartNode, GoalNode, list]:
         assert len(trace) >= 2, (
             "Expected at least two trace points" "got %s",
             (len(trace),),
@@ -320,60 +312,48 @@ class Navigator:
         ), "Expected all points to be TracePoint, got types %s." % (
             ", ".join([str(type(v)) for v in trace])
         )
-        return self._generate_nodes(trace[0], trace[-1], trace[1:-1])
-
-    def _filter_trace(self, trace: list) -> List[TracePoint]:
-        assert len(trace) >= 2, (
-            "Expected at least two trace points" "got %s",
-            (len(trace),),
-        )
-        assert all(
-            [isinstance(trace_point, TracePoint) for trace_point in trace]
-        ), "Expected all points to be TracePoint, got types %s." % (
-            ", ".join([str(type(v)) for v in trace])
-        )
-        return [
-            trace_point
-            for trace_point in trace
-            if not self._grid.collision_check(
-                *pixel_position(trace_point.x, trace_point.y, self._grid.transform)
-            )
-        ]
-
-    def animate_obstacle(self):
-        x, y = np.where(self._grid.obstacle == True)
-        plt.plot(x, y, ".k")
+        return self._generate_nodes(grid, trace[0], trace[-1], trace[1:-1])
 
 
 class AStar(Navigator):
-    def __init__(self, grid):
-        super().__init__(grid)
+    def __init__(self):
+        super().__init__()
 
     def pre_compute_goal_heuristics(self):
         pass
 
-    def path(self, trace: list, space_threshold=30, filter_trace=True) -> list:
+    def path(
+        self,
+        grid: Union[PixelGrid, Grid],
+        trace: list,
+        search_space_threshold=30,
+        filter_trace=True,
+        area_simplify=0,
+    ) -> list:
         """
 
         The first point of the trace will be assigned as start and end point as the final goal
         and all the points in between will be assigned as intermediate goal
 
+        :param area_simplify: area in meters, by which the new trace will be simplified i.e use to reduce the number of
+        points
+        :param grid:
         :param filter_trace: bool, if the trace passed over the obstacle pixel, set this to true
         this will remove such points which pass over obstacle zone
         :param trace:
-        :param space_threshold:
+        :param search_space_threshold:
         :return:
         """
 
         if filter_trace:
-            trace = self._filter_trace(trace)
+            trace = grid.filter_trace(trace)
 
-        start, goal, goal_collection = self._make_data(trace)
+        start, goal, goal_collection = self._make_data(grid, trace)
 
         connectivity_meta = self._node_connectivity(start, goal_collection)
 
         open_set, closed_set = dict(), dict()
-        open_set[self._grid.grid_index(start.x, start.y)] = start
+        open_set[grid.grid_index(start.x, start.y)] = start
 
         n_goal = goal_collection[0]
         start.parent_node = start
@@ -409,16 +389,8 @@ class AStar(Navigator):
                     del open_set[grid_id]
                     continue
 
-            # show graph
-            if SHOW_ANIMATION:  # pragma: no cover
-                plt.plot(current.x, current.y, "xc")
-                # for stopping simulation with the esc key.
-                plt.gcf().canvas.mpl_connect(
-                    "key_release_event",
-                    lambda event: [exit(0) if event.key == "escape" else None],
-                )
-                if len(closed_set.keys()) % 10 == 0:
-                    plt.pause(0.001)
+            if grid.is_show_animation():
+                grid.animate(current.x, current.y)
 
             if current.x == n_goal.x and current.y == n_goal.y:
                 if not n_goal.is_intermediate:
@@ -450,8 +422,10 @@ class AStar(Navigator):
                     # AND TO AVOID THE OBSTACLE SEARCH SPACE HAS TO BE EXPANDED AS THE OBSTACLE IS LARGER THAN THE
                     # NAVIGATE SPACE.
 
-                    if self.navigate_space < space_threshold:
-                        self.navigate_space = self.navigate_space + space_threshold
+                    if self.navigate_space < search_space_threshold:
+                        self.navigate_space = (
+                            self.navigate_space + search_space_threshold
+                        )
 
             # REMOVE VISITED FROM OPEN SET
             del open_set[grid_id]
@@ -467,10 +441,10 @@ class AStar(Navigator):
                     current.cost + self._direction[i][2],
                     grid_id,
                 )
-                new_node_grid_id = self._grid.grid_index(node.x, node.y)
+                new_node_grid_id = grid.grid_index(node.x, node.y)
 
                 # SKIP NODE WHEN OBSTACLE ENCOUNTERED
-                if not self.obstacle_check(self._grid, node):
+                if not self.obstacle_check(grid, node):
                     continue
 
                 # SKIP IF MARKED VISITED
@@ -494,7 +468,14 @@ class AStar(Navigator):
                         # BEST PATH FOUND
                         open_set[new_node_grid_id] = node
 
-        return self._spatial_path(*self.final_path(self._grid, n_goal, closed_set))
+        return (
+            line_simplify(
+                grid.spatial_path_from_x_y(*self.final_path(grid, n_goal, closed_set)),
+                area_simplify,
+            )
+            if area_simplify > 0
+            else grid.spatial_path_from_x_y(*self.final_path(grid, n_goal, closed_set))
+        )
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
         """

@@ -1,4 +1,5 @@
 import math
+from typing import Tuple, Union, Any
 
 import numpy as np
 from numpy import dot
@@ -13,7 +14,7 @@ def unit_vector(vec: tuple):
     return vec / np.linalg.norm(vec)
 
 
-def angle_between_vector(v1: tuple, v2: tuple):
+def angle_between_vector(v1: tuple, v2: tuple) -> float:
     """
     two vectors have either the same direction -  https://stackoverflow.com/a/13849249/71522
     :param v1:
@@ -27,7 +28,7 @@ def angle_between_vector(v1: tuple, v2: tuple):
 
 def get_point_after_certain_distance(
     start: tuple, end: tuple, d: float, dt: float
-) -> tuple:
+) -> Tuple[float, float]:
     """
     https://math.stackexchange.com/questions/175896/finding-a-point-along-a-line-a-certain-distance-away-from-another-point
 
@@ -45,7 +46,7 @@ def get_point_after_certain_distance(
     return new_x, new_y
 
 
-def get_midpoint(start: tuple, end: tuple) -> tuple:
+def get_midpoint(start: tuple, end: tuple) -> Tuple[float, float]:
     """
     https://www.mathsisfun.com/algebra/line-midpoint.html
 
@@ -56,7 +57,9 @@ def get_midpoint(start: tuple, end: tuple) -> tuple:
     return ((start[0] + end[0]) / 2), ((start[1] + end[1]) / 2)
 
 
-def get_end_coordinate(start: tuple, angle_in_degree: float, distance: float) -> tuple:
+def get_end_coordinate(
+    start: tuple, angle_in_degree: float, distance: float
+) -> Tuple[float, float]:
     """
     # https://math.stackexchange.com/questions/39390/determining-end-coordinates-of-line-with-the-specified-length-and-angle
 
@@ -70,7 +73,7 @@ def get_end_coordinate(start: tuple, angle_in_degree: float, distance: float) ->
     return x2, y2
 
 
-def get_center_of_mass(x, y):
+def get_center_of_mass(x, y) -> Tuple[Union[Any, float], Union[Any, float]]:
     """
     https://math.stackexchange.com/questions/24485/find-the-average-of-a-collection-of-points-in-2d-space
 
@@ -81,7 +84,9 @@ def get_center_of_mass(x, y):
     return np.mean(x), np.mean(y)
 
 
-def get_perpendicular_point(start: tuple, end: tuple, offset=10):
+def get_perpendicular_point(
+    start: tuple, end: tuple, offset=10
+) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     """
     https://stackoverflow.com/questions/133897/how-do-you-find-a-point-at-a-given-perpendicular-distance-from-a-line?rq=1
 
@@ -110,7 +115,7 @@ def get_perpendicular_point(start: tuple, end: tuple, offset=10):
     return (x3, y3), (x4, y4)
 
 
-def vector(p1, p2):
+def vector(p1, p2) -> Tuple[float, float]:
     """
 
     :param p1:
@@ -133,7 +138,7 @@ def cosine_similarity(p1, p2, p3):
     return dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 
-def diagonal_distance(p1: tuple, p2: tuple, d1: float, d2: float):
+def diagonal_distance(p1: tuple, p2: tuple, d1: float, d2: float) -> float:
     """
 
     :param p1:
@@ -148,7 +153,7 @@ def diagonal_distance(p1: tuple, p2: tuple, d1: float, d2: float):
     return d1 * (dx + dy) + (d2 - 2 * d1) * min(dx, dy)
 
 
-def euclidean_distance(p1: tuple, p2: tuple):
+def euclidean_distance(p1: tuple, p2: tuple) -> float:
     """
 
     :param p1:
@@ -158,7 +163,7 @@ def euclidean_distance(p1: tuple, p2: tuple):
     return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
 
 
-def manhattan_distance(p1: tuple, p2: tuple):
+def manhattan_distance(p1: tuple, p2: tuple) -> float:
     """
 
     :param p1:

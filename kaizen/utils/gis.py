@@ -4,11 +4,13 @@ import ogr
 import osr
 
 import geopandas
+import visvalingamwyatt as vw
+
 from affine import Affine
 from geopandas import GeoDataFrame
 from pandas import Series
 from rasterio.transform import rowcol, xy
-from shapely.geometry import mapping, box, Point, Polygon
+from shapely.geometry import mapping, box, Point, Polygon, LineString
 
 
 def decompose_data_frame_row(row: Series):
@@ -104,19 +106,21 @@ def read_data_frame(path: str):
     return geopandas.read_file(path)
 
 
-def crs_conversion(crs_from: str, crs_to: str, coordinate: tuple) -> Tuple[float, float]:
+def crs_conversion(
+    crs_from: str, crs_to: str, coordinate: tuple
+) -> Tuple[float, float]:
     # https://gis.stackexchange.com/questions/78838/converting-projected-coordinates-to-lat-lon-using-python
 
     assert len(coordinate) == 2, (
-        "Expected 'point' in format '(X, Y)'"
-        "got %s", (coordinate, )
+        "Expected 'point' in format '(X, Y)'" "got %s",
+        (coordinate,),
     )
 
     crs_from = int(crs_from.split(":")[-1])
     crs_to = int(crs_to.split(":")[-1])
 
     point = ogr.Geometry(ogr.wkbPoint)
-    point.AddPoint(coordinate[0],  coordinate[1])
+    point.AddPoint(coordinate[0], coordinate[1])
 
     in_spatial_ref = osr.SpatialReference()
     in_spatial_ref.ImportFromEPSG(crs_from)
@@ -130,32 +134,45 @@ def crs_conversion(crs_from: str, crs_to: str, coordinate: tuple) -> Tuple[float
     return point.GetX(), point.GetY()
 
 
-def bounding_box_crs_conversion(bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326") -> list:
+def bounding_box_crs_conversion(
+    bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326"
+) -> list:
 
-    assert (len(bounds) == 1), (
-        "Expected a single bounding box"
-        "got %s", (len(bounds))
-    )
+    assert len(bounds) == 1, ("Expected a single bounding box" "got %s", (len(bounds)))
     assert my_crs(crs_to), (
-        "CRS Provided not in supported list"
-        "Expected %s got %s", (['epsg:26910', 'epsg:32649'], crs_to, )
+        "CRS Provided not in supported list" "Expected %s got %s",
+        (
+            ["epsg:26910", "epsg:32649"],
+            crs_to,
+        ),
     )
     converted_boundary = list()
     for point in bounds[0]:
-        converted_boundary.append(crs_conversion(crs_from, crs_to, (point[0], point[1])))
+        converted_boundary.append(
+            crs_conversion(crs_from, crs_to, (point[0], point[1]))
+        )
 
     return converted_boundary
 
 
-def convert_and_get_extent(bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326") -> tuple:
+def convert_and_get_extent(
+    bounds: Union[np.ndarray, list, tuple], crs_to: str, crs_from="epsg:4326"
+) -> tuple:
 
-    assert (len(bounds) == 1), (
-        "Expected a single bounding box"
-        "got %s", (len(bounds))
-    )
+    assert len(bounds) == 1, ("Expected a single bounding box" "got %s", (len(bounds)))
     assert my_crs(crs_to), (
-        "CRS Provided not in supported list"
-        "Expected %s got %s", (['epsg:26910', 'epsg:32649'], crs_to, )
+        "CRS Provided not in supported list" "Expected %s got %s",
+        (
+            ["epsg:26910", "epsg:32649"],
+            crs_to,
+        ),
     )
 
     return Polygon(bounding_box_crs_conversion(bounds, crs_to, crs_from)).bounds
+
+
+def line_simplify(coordinates: list, area_threshold_im_meters: float):
+    # https://github.com/Permafacture/Py-Visvalingam-Whyatt/blob/master/polysimplify.py
+    # https://pypi.org/project/visvalingamwyatt/
+    # https://hull-repository.worktribe.com/preview/376364/000870493786962263.pdf
+    return vw.simplify(coordinates, threshold=area_threshold_im_meters)
