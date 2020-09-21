@@ -2,9 +2,8 @@ import uuid
 from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, List
 
-import geopandas
 from geopandas import GeoDataFrame
 
 from kaizen.utils.gis import (
@@ -31,6 +30,16 @@ class Traces(defaultdict):
 
     def __init__(self):
         super().__init__(list)
+
+    @staticmethod
+    def trace_point_to_coordinates(trace: List[TracePoint]) -> List[tuple]:
+        return [(trace_point.x, trace_point.y) for trace_point in trace]
+
+    def coordinates(self) -> List[List]:
+        trace_coordinates = list()
+        for idx, trace in self.items():
+            trace_coordinates.append(self.trace_point_to_coordinates(trace))
+        return trace_coordinates
 
     def add(self, x, y, trace_point_id, trace_id, **kwargs):
         """
@@ -68,24 +77,24 @@ class Traces(defaultdict):
             assert all(
                 element in list(trace_data.columns.values)
                 for element in [
-                    "track_id",
+                    "trace_id",
                 ]
             ), (
-                "Expected ['track_id',] key to be in Data",
+                "Expected ['trace_id',] key to be in Data",
                 "got %s",
                 list(trace_data.columns.values),
             )
 
             for idx, feature in trace_data.iterrows():
-                trace_point_id = uuid.uuid1()
-
                 feature_geometry, feature_property = decompose_data_frame_row(feature)
-
+                if "trace_point_id" in feature_property:
+                    trace_point_id = feature_property["trace_point_id"]
+                else:
+                    trace_point_id = uuid.uuid1().int
                 self.add(
                     x=feature_geometry["coordinates"][0],
                     y=feature_geometry["coordinates"][1],
-                    trace_point_id=trace_point_id.int,
-                    trace_id=feature_property["track_id"],
+                    trace_point_id=trace_point_id,
                     **feature_property,
                 )
 

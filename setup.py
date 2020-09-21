@@ -7,7 +7,7 @@ install_requires = [
     "shapely == 1.7.1",
     "fiona >= 1.8.9.post2",
     "rtree >= 0.9.4",
-    "affine = 2.3.0",
+    "affine == 2.3.0",
     "geopandas == 0.8.1",
     "matplotlib == 3.3.1",
     "networkx == 2.5",

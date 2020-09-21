@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 import numpy as np
 
 import geopandas
@@ -9,7 +9,7 @@ from affine import Affine
 from geopandas import GeoDataFrame
 from pandas import Series
 from rasterio.transform import rowcol, xy
-from shapely.geometry import mapping, box, Point, Polygon
+from shapely.geometry import mapping, box, Point, Polygon, LineString, MultiLineString
 
 
 def decompose_data_frame_row(row: Series):
@@ -175,3 +175,56 @@ def line_simplify(coordinates: list, area_threshold_im_meters: float):
     # https://pypi.org/project/visvalingamwyatt/
     # https://hull-repository.worktribe.com/preview/376364/000870493786962263.pdf
     return vw.simplify(coordinates, threshold=area_threshold_im_meters)
+
+
+def line_referencing(
+    line: Union[LineString, MultiLineString], point: Point
+) -> Tuple[Union[int, float], Point]:
+    # https://stackoverflow.com/questions/24415806/coordinates-of-the-closest-points-of-two-geometries-in-shapely
+
+    assert type(line) in [LineString, MultiLineString], (
+        "Expected type of 'line' to be in ['LineString', 'MultiLineString']" "got %s",
+        (type(line),),
+    )
+    assert type(point) == Point, (
+        "Expected type of 'point' to be 'Point'" "got %s",
+        (type(point),),
+    )
+    fraction = line.project(point, normalized=True)
+    project_point = line.interpolate(fraction, normalized=True)
+    return fraction, project_point
+
+
+def line_referencing_series_of_coordinates(
+    line: Union[LineString, MultiLineString], points: List[tuple]
+) -> List[Point]:
+    assert type(line) in [LineString, MultiLineString], (
+        "Expected type of 'line' to be in ['LineString', 'MultiLineString']" "got %s",
+        (type(line),),
+    )
+    assert all(
+        type(point) is tuple for point in points
+    ), "Expected type of 'point' to be 'tuple'"
+    referenced = list()
+    for point in points:
+        fraction, projected_point = line_referencing(line, Point(point))
+        referenced.append(projected_point)
+    return referenced
+
+
+def line_referencing_series_of_point_object(
+    line: Union[LineString, MultiLineString], points: List[Point]
+) -> List[Point]:
+    assert type(line) in [LineString, MultiLineString], (
+        "Expected type of 'line' to be in ['LineString', 'MultiLineString']" "got %s",
+        (type(line),),
+    )
+    assert all(
+        type(point) is Point for point in points
+    ), "Expected type of 'point' to be 'Point'"
+
+    referenced = list()
+    for point in points:
+        fraction, projected_point = line_referencing(line, point)
+        referenced.append(projected_point)
+    return referenced

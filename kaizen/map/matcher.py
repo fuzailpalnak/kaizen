@@ -6,13 +6,14 @@ from types import SimpleNamespace
 from typing import Any, Tuple, Union, List
 
 import networkx as nx
-from shapely.geometry import Point, mapping
+from shapely.geometry import Point, mapping, shape, LineString, MultiLineString
 
 from scipy import spatial
 from scipy import stats
 
-from kaizen.map.road import RoadNetwork, road_network
+from kaizen.map.road import RoadNetwork, road_network_from_path
 from kaizen.map.trace import Traces, TracePoint
+from kaizen.utils.gis import line_referencing, line_referencing_series_of_coordinates
 
 
 @dataclass
@@ -74,7 +75,7 @@ class CandidatesPerTracePoint(list):
 
         assert hasattr(road_information.property, "u") and hasattr(
             road_information.property, "v"
-        ), ("Expected road to have start node 'u' and end node 'v'" "for every edge")
+        ), "Expected road to have start node 'u' and end node 'v'" "for every edge"
 
         if isinstance(trace_information, dict):
             trace_information = SimpleNamespace(**trace_information)
@@ -90,6 +91,9 @@ class CandidatesPerTracePoint(list):
             )
         )
 
+    def coordinates(self):
+        return [(candidate.x, candidate.y) for candidate in self]
+
 
 class Candidates(defaultdict):
     def __init__(self):
@@ -98,10 +102,14 @@ class Candidates(defaultdict):
     def add(self, idx, candidate_per_trace_point: CandidatesPerTracePoint):
         self[idx] = candidate_per_trace_point
 
+    def coordinates(self):
+        return [candidate.coordinates() for _, candidate in self.items()]
+
 
 class Match:
-    def __init__(self, road: RoadNetwork):
+    def __init__(self, road: RoadNetwork, observation_error=30):
         self.road_network = road
+        self.observation_error = observation_error
 
     def _get_candidates(self, trace_point: TracePoint) -> CandidatesPerTracePoint:
         """
@@ -111,7 +119,7 @@ class Match:
         """
         tr_point = Point(trace_point.x, trace_point.y)
 
-        candidate_roads = self.road_network.intersection(tr_point.buffer(30))
+        candidate_roads = self.road_network.intersection(tr_point.buffer(self.observation_error))
         candidates_per_trace_points = CandidatesPerTracePoint()
         for idx, (fid, candidate) in enumerate(candidate_roads.items()):
 
@@ -124,8 +132,7 @@ class Match:
             # POINT ON THE LINE WITH SHORTEST DISTANCE TO THE TRACE_REC
 
             # https://stackoverflow.com/questions/24415806/coordinates-of-the-closest-points-of-two-geometries-in-shapely
-            fraction = candidate.project(tr_point, normalized=True)
-            project_point = candidate.interpolate(fraction, normalized=True)
+            fraction, project_point = line_referencing(candidate, tr_point)
 
             # https://gist.github.com/href/1319371
             # https://stackoverflow.com/questions/35282222/in-python-how-do-i-cast-a-class-object-to-a-dict/35282286
@@ -207,8 +214,7 @@ class Match:
 
         return shortest_distance
 
-    @staticmethod
-    def _observation_probability(x: float, y: float, trace_point: TracePoint) -> float:
+    def _observation_probability(self, x: float, y: float, trace_point: TracePoint) -> float:
         """
 
         :param x:
@@ -227,7 +233,7 @@ class Match:
         return stats.norm.pdf(
             spatial.distance.euclidean([trace_point.x, trace_point.y], [x, y]),
             loc=0,
-            scale=30,
+            scale=self.observation_error,
         )
 
     def _transmission_probability(
@@ -336,6 +342,8 @@ class Match:
         :param candidates:
         :return:
         """
+        # TODO LOTS OF FOR LOOP HERE, SEE IF THAT CAN BE OPTIMIZED
+
         highest_score_computed = dict()
         parent_of_the_current_candidate = dict()
         to_explore_uuid = list(candidates.keys())
@@ -417,11 +425,13 @@ class Match:
         return matched_sequence
 
     def _get_connected_road_geometry(
-        self, trace_id, matched_sequence: List[Candidate]
-    ) -> Tuple[Union[defaultdict, list], Union[defaultdict, OrderedDict]]:
-        connected_road = defaultdict(list)
-        connected_coordinates = OrderedDict()
+        self, matched_sequence: List[Candidate]
+    ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict]]:
+        connected_shape = list()
+        connected_info = OrderedDict()
+        visited = list()
 
+        # TODO ALTERNATIVES TO FOR LOOP
         for previous, current in zip(matched_sequence, matched_sequence[1:]):
             road_ids = self._road_ids_along_shortest_path(
                 nx.astar_path(
@@ -431,17 +441,18 @@ class Match:
                 )
             )
             for road in road_ids:
-                if int(road) not in connected_road[int(trace_id)]:
-                    connected_road[int(trace_id)].append(int(road))
-                    connected_coordinates[int(road)] = self.road_network.geometry(
-                        int(road)
-                    )["coordinates"]
+                if int(road) not in visited:
+                    connected_shape.append(shape(self.road_network.geometry(int(road))))
+                    connected_info[int(road)] = self.road_network.entry(int(road))
+                    visited.append(int(road))
 
-        return connected_road, connected_coordinates
+        return connected_shape, connected_info
 
-    def match(self, trace: Traces):
+    def match(
+        self, traces: Traces
+    ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict], List[Point]]:
 
-        for trace_id, trace in trace.items():
+        for trace_id, trace in traces.items():
             candidates = Candidates()
 
             for trace_point in trace:
@@ -460,10 +471,13 @@ class Match:
 
             # FIND A MATCH FOR A SINGLE TRACE
             matched_sequence = self._until_match(candidates)
-            connected_road, connected_coordinates = self._get_connected_road_geometry(
-                trace_id, matched_sequence
+            connected_shape, connected_info = self._get_connected_road_geometry(
+                matched_sequence
             )
-            yield connected_road, connected_coordinates
+            yield connected_shape, connected_info, line_referencing_series_of_coordinates(
+                MultiLineString(connected_shape),
+                traces.trace_point_to_coordinates(trace),
+            )
 
     @classmethod
     def init(cls, road_network_file: str):
@@ -472,5 +486,5 @@ class Match:
         :param road_network_file:
         :return:
         """
-        road = road_network(road_network_file)
+        road = road_network_from_path(road_network_file)
         return cls(road=road)

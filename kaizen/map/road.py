@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import geopandas
 import networkx as nx
 import rtree
+from geopandas import GeoDataFrame
 from shapely.geometry import shape, Polygon
-from shapely.strtree import STRtree
 
 from kaizen.utils.gis import (
     geom_check,
@@ -161,14 +161,7 @@ class RoadNetwork:
         return index
 
 
-def road_network(path: str) -> RoadNetwork:
-    """
-    Generate the connected road network from GeoSpatial LineString
-    :param path:
-    :return:
-    """
-
-    road_data = read_data_frame(path)
+def road_network_from_data_frame(road_data: GeoDataFrame) -> RoadNetwork:
     assert supported_crs(road_data), (
         "Supported CRS ['epsg:26910', 'epsg:32649']" "got %s",
         (road_data.crs,),
@@ -198,3 +191,13 @@ def road_network(path: str) -> RoadNetwork:
         road_table=road_table,
         maximum_distance=compute_diagonal_distance_of_extent(road_data),
     )
+
+
+def road_network_from_path(path: str) -> RoadNetwork:
+    """
+    Generate the connected road network from GeoSpatial LineString
+    :param path:
+    :return:
+    """
+
+    return road_network_from_data_frame(read_data_frame(path))
