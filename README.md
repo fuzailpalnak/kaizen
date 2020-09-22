@@ -6,7 +6,7 @@ A Library build with two propose, to *map match* road elements either with *prob
 source* and help, tackle the problem of *roads and building intersecting or overlapping*, which are results of
 inaccurate digitizing, snapping, or resource mismatch.
 
-This Library is my view on tackling the aforementioned problem, caused during map making, using obstacle avoidance
+This Library, presents, my view on tackling the aforementioned problem, caused during map making, using obstacle avoidance
 and map matching
 
 ## Installation
