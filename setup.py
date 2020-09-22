@@ -17,7 +17,7 @@ install_requires = [
     "rasterio == 1.1.5",
     "scipy == 1.5.2",
     "visvalingamwyatt == 0.1.3",
-    "GDAL == 2.4.4"
+    "GDAL == 2.4.4",
 ]
 
 setup(
@@ -30,9 +30,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),
-    python_requires='~=3.3',
+    python_requires="~=3.3",
     install_requires=install_requires,
-    keywords=["GIS, Map Matching, Road Network, Building Footprint, Polygon, MultiPolygon, Geometry"],
+    keywords=[
+        "GIS, Map Matching, Road Network, Building Footprint, Polygon, MultiPolygon, Geometry"
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

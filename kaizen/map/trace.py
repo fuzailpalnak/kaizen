@@ -55,11 +55,8 @@ class Traces(defaultdict):
         :param kwargs:
         :return:
         """
-        assert (
-            x is not None
-            and y is not None
-            and trace_point_id is not None
-            and trace_id is not None
+        assert all(
+            v is not None for v in [x, y, trace_point_id, trace_id]
         ), "Expected ['x', 'y', 'trace_point_id', 'trace_id'] to be not None"
         self[trace_id].append(
             TracePoint(x, y, trace_point_id, trace_id, SimpleNamespace(**kwargs))
@@ -100,18 +97,18 @@ class Traces(defaultdict):
 
         elif geom_check(trace_data, "LineString"):
             for idx, feature in trace_data.iterrows():
-                trace_id = uuid.uuid1()
+                trace_id = uuid.uuid1().int
 
                 feature_geometry, feature_property = decompose_data_frame_row(feature)
                 line_string_coordinate = feature_geometry["coordinates"]
 
                 for nodes in line_string_coordinate:
-                    trace_point_id = uuid.uuid1()
+                    trace_point_id = uuid.uuid1().int
                     self.add(
                         x=nodes[0],
                         y=nodes[-1],
-                        trace_point_id=trace_point_id.int,
-                        trace_id=trace_id.int,
+                        trace_point_id=trace_point_id,
+                        trace_id=trace_id,
                         **feature_property,
                     )
         else:
@@ -136,7 +133,7 @@ class Traces(defaultdict):
             "Expected trace_point_list to be greater than zero" "got %s",
             (len(trace),),
         )
-        trace_id = uuid.uuid1()
+        trace_id = 0
         for trace in trace:
             assert len(trace) == 2, (
                 "Expected trace to have 2 values 'X' and 'Y'" "got %s",
@@ -147,7 +144,7 @@ class Traces(defaultdict):
                 x=trace[0],
                 y=trace[-1],
                 trace_point_id=trace_point_id.int,
-                trace_id=trace_id.int,
+                trace_id=trace_id,
             )
         return self
 
@@ -174,18 +171,18 @@ class Traces(defaultdict):
                 (type(trace_point_list)),
             )
 
-            trace_id = uuid.uuid1()
+            trace_id = uuid.uuid1().int
             for trace in trace_point_list:
                 assert len(trace) == 2, (
                     "Expected trace to have 2 values 'X' and 'Y'" "got %s",
                     (trace,),
                 )
-                trace_point_id = uuid.uuid1()
+                trace_point_id = uuid.uuid1().int
                 self.add(
                     x=trace[0],
                     y=trace[-1],
-                    trace_point_id=trace_point_id.int,
-                    trace_id=trace_id.int,
+                    trace_point_id=trace_point_id,
+                    trace_id=trace_id,
                 )
         return self
 

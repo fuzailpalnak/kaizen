@@ -139,10 +139,6 @@ class Grid:
         return pixel_coordinate
 
     def filter_trace(self, trace: List[TracePoint]) -> List[TracePoint]:
-        assert len(trace) >= 2, (
-            "Expected at least two trace points" "got %s",
-            (len(trace),),
-        )
         assert all(
             [isinstance(trace_point, TracePoint) for trace_point in trace]
         ), "Expected all points to be TracePoint, got types %s." % (

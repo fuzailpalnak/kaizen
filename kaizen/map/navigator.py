@@ -7,7 +7,7 @@ import numpy as np
 
 from kaizen.map.grid import PixelGrid, Grid
 from kaizen.map.robot import Robot
-from kaizen.map.trace import TracePoint
+from kaizen.map.trace import TracePoint, Traces
 from kaizen.utils.gis import line_simplify
 from kaizen.utils.numerical import (
     angle_between_vector,
@@ -210,20 +210,121 @@ class Navigator:
         """
         return manhattan_distance((node.x, node.y), (goal.x, goal.y))
 
-    def path(
+    def _path(
         self,
         grid: Union[PixelGrid, Grid],
-        trace: list,
+        trace: List[TracePoint],
         search_space_threshold: float,
+        filter_trace: bool = True,
+        area_simplify: float = 0.0,
     ) -> list:
         """
 
+        The first point of the trace will be assigned as start and end point as the final goal
+        and all the points in between will be assigned as intermediate goal
+
+        :param area_simplify: area in meters, by which the new trace will be simplified i.e use to reduce the number of
+        points
         :param grid:
+        :param filter_trace: bool, if the trace passed over the obstacle pixel, set this to true
+        this will remove such points which pass over obstacle zone
         :param trace:
         :param search_space_threshold:
         :return:
         """
+
         raise NotImplementedError
+
+    def path_finder_from_traces(
+        self,
+        grid: Union[PixelGrid, Grid],
+        traces: Traces,
+        search_space_threshold: float,
+        filter_trace: bool = True,
+        area_simplify: float = 0,
+    ):
+        assert all(
+            v is not None
+            for v in [grid, traces, search_space_threshold, filter_trace, area_simplify]
+        ), (
+            "Expected ['grid', 'trace', 'search_space_threshold', 'filter_trace', 'area_simplify'']"
+            "to be not NONE"
+        )
+        assert isinstance(grid, Grid), (
+            "Expected 'grid' to be instance of 'Grid'" "got %s",
+            (type(grid),),
+        )
+
+        assert isinstance(traces, Traces), (
+            "Expected 'traces' to be instance of 'Traces'" "got %s",
+            (type(traces),),
+        )
+
+        assert search_space_threshold > 0, (
+            "Expected 'search_space_threshold' to be in range [1, 360]" "got %s",
+            (search_space_threshold,),
+        )
+
+        assert type(filter_trace) is bool, (
+            "Expected 'filter_trace' to be of type 'bool'" "got %s",
+            (filter_trace,),
+        )
+
+        assert area_simplify >= 0, (
+            "Expected 'area_simplify' to be positive" "got %s",
+            (area_simplify,),
+        )
+
+        for _, trace in traces.items():
+            yield self._path(
+                grid, trace, search_space_threshold, filter_trace, area_simplify
+            )
+
+    def path_finder_from_trace(
+        self,
+        grid: Union[PixelGrid, Grid],
+        trace: List[TracePoint],
+        search_space_threshold: float,
+        filter_trace: bool = True,
+        area_simplify: float = 0,
+    ):
+        assert all(
+            v is not None
+            for v in [grid, trace, search_space_threshold, filter_trace, area_simplify]
+        ), (
+            "Expected ['grid', 'trace', 'search_space_threshold', 'filter_trace', 'area_simplify'']"
+            "to be not NONE"
+        )
+
+        assert isinstance(grid, Grid), (
+            "Expected 'grid' to be instance of 'Grid'" "got %s",
+            (type(grid),),
+        )
+
+        assert all(
+            [isinstance(trace_point, TracePoint) for trace_point in trace]
+        ), "Expected all points to be TracePoint, got types %s." % (
+            ", ".join([str(type(v)) for v in trace])
+        )
+
+        assert search_space_threshold > 0, (
+            "Expected 'search_space_threshold' to be in range [1, 360]" "got %s",
+            (search_space_threshold,),
+        )
+
+        assert type(filter_trace) is bool, (
+            "Expected 'filter_trace' to be of type 'bool'" "got %s",
+            (filter_trace,),
+        )
+
+        assert area_simplify >= 0, (
+            "Expected 'area_simplify' to be positive" "got %s",
+            (area_simplify,),
+        )
+
+        return self._path(
+            grid, trace, search_space_threshold, filter_trace, area_simplify
+        )
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
         """
@@ -322,13 +423,13 @@ class AStar(Navigator):
     def pre_compute_goal_heuristics(self):
         pass
 
-    def path(
+    def _path(
         self,
         grid: Union[PixelGrid, Grid],
-        trace: list,
+        trace: List[TracePoint],
         search_space_threshold=30,
-        filter_trace=True,
-        area_simplify=0,
+        filter_trace: bool = True,
+        area_simplify: float = 0.0,
     ) -> list:
         """
 

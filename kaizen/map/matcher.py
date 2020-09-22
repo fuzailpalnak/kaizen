@@ -56,12 +56,8 @@ class CandidatesPerTracePoint(list):
         :param trace_information:  information of the trace point for which the candidate was obtained
         :return:
         """
-        assert (
-            x is not None
-            and y is not None
-            and distance is not None
-            and road_information is not None
-            and trace_information is not None
+        assert all(
+            v is not None for v in [x, y, distance, road_information, trace_information]
         ), "Expected ['x', 'y', 'candidate_id', 'distance', 'road_information', 'trace_information'] to be not None"
 
         assert type(distance) is float, (
@@ -119,7 +115,9 @@ class Match:
         """
         tr_point = Point(trace_point.x, trace_point.y)
 
-        candidate_roads = self.road_network.intersection(tr_point.buffer(self.observation_error))
+        candidate_roads = self.road_network.intersection(
+            tr_point.buffer(self.observation_error)
+        )
         candidates_per_trace_points = CandidatesPerTracePoint()
         for idx, (fid, candidate) in enumerate(candidate_roads.items()):
 
@@ -214,7 +212,9 @@ class Match:
 
         return shortest_distance
 
-    def _observation_probability(self, x: float, y: float, trace_point: TracePoint) -> float:
+    def _observation_probability(
+        self, x: float, y: float, trace_point: TracePoint
+    ) -> float:
         """
 
         :param x:
@@ -427,6 +427,8 @@ class Match:
     def _get_connected_road_geometry(
         self, matched_sequence: List[Candidate]
     ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict]]:
+
+        # TODO IMPROVE FInd CONNECTED GEOMETRY ALGORITHM
         connected_shape = list()
         connected_info = OrderedDict()
         visited = list()
@@ -448,36 +450,56 @@ class Match:
 
         return connected_shape, connected_info
 
-    def match(
+    def _match(
+        self, trace_id, trace: List[TracePoint]
+    ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict], List[Point]]:
+        candidates = Candidates()
+
+        for trace_point in trace:
+            # [REFERENCE IN PAPER]
+            # SECTION 5.1 Candidate Preparation
+            # FOR EVERY TRACE POINT, PROJECT THE POINT ON TO ROAD SEGMENTS WITHIN CERTAIN BUFFER AND NOTE THE
+            # CANDIDATES
+            # EACH TRACE_REC CAN HAVE MULTIPLE CANDIDATES
+
+            candidates_per_trace_point = self._get_candidates(trace_point)
+
+            if len(candidates_per_trace_point) != 0:
+                candidates.add(trace_point.trace_point_id, candidates_per_trace_point)
+
+        # FIND A MATCH FOR A SINGLE TRACE
+        matched_sequence = self._until_match(candidates)
+        connected_shape, connected_info = self._get_connected_road_geometry(
+            matched_sequence
+        )
+        return (
+            connected_shape,
+            connected_info,
+            line_referencing_series_of_coordinates(
+                MultiLineString(connected_shape),
+                Traces.trace_point_to_coordinates(trace),
+            ),
+        )
+
+    def match_trace(
+        self, trace_id, trace: List[TracePoint]
+    ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict], List[Point]]:
+        assert all(
+            [isinstance(trace_point, TracePoint) for trace_point in trace]
+        ), "Expected all points to be TracePoint, got types %s." % (
+            ", ".join([str(type(v)) for v in trace])
+        )
+        return self._match(trace_id, trace)
+
+    def match_traces(
         self, traces: Traces
     ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict], List[Point]]:
-
+        assert isinstance(traces, Traces), (
+            "Expected 'traces' to be instance of 'Traces'" "got %s",
+            (type(traces),),
+        )
         for trace_id, trace in traces.items():
-            candidates = Candidates()
-
-            for trace_point in trace:
-                # [REFERENCE IN PAPER]
-                # SECTION 5.1 Candidate Preparation
-                # FOR EVERY TRACE POINT, PROJECT THE POINT ON TO ROAD SEGMENTS WITHIN CERTAIN BUFFER AND NOTE THE
-                # CANDIDATES
-                # EACH TRACE_REC CAN HAVE MULTIPLE CANDIDATES
-
-                candidates_per_trace_point = self._get_candidates(trace_point)
-
-                if len(candidates_per_trace_point) != 0:
-                    candidates.add(
-                        trace_point.trace_point_id, candidates_per_trace_point
-                    )
-
-            # FIND A MATCH FOR A SINGLE TRACE
-            matched_sequence = self._until_match(candidates)
-            connected_shape, connected_info = self._get_connected_road_geometry(
-                matched_sequence
-            )
-            yield connected_shape, connected_info, line_referencing_series_of_coordinates(
-                MultiLineString(connected_shape),
-                traces.trace_point_to_coordinates(trace),
-            )
+            yield self._match(trace_id, trace)
 
     @classmethod
     def init(cls, road_network_file: str):

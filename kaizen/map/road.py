@@ -32,11 +32,10 @@ class RoadTable(OrderedDict):
         feature_geometry: dict,
         weight: float,
     ):
-        assert (
-            feature_id is not None
-            and feature_property is not None
-            and feature_geometry is not None
-            and weight is not None
+
+        assert all(
+            v is not None
+            for v in [feature_id, feature_property, feature_geometry, weight]
         ), "Expected ['feature_id', 'feature_property', 'feature_geometry', 'weight'] to be not None"
 
         assert type(feature_id) is int, (
