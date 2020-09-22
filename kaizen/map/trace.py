@@ -55,9 +55,13 @@ class Traces(defaultdict):
         :param kwargs:
         :return:
         """
-        assert all(
-            v is not None for v in [x, y, trace_point_id, trace_id]
-        ), "Expected ['x', 'y', 'trace_point_id', 'trace_id'] to be not None"
+        assert None not in {
+            x,
+            y,
+            trace_point_id,
+            trace_id,
+        }, "Expected ['x', 'y', 'trace_point_id', 'trace_id'] to be not None"
+
         self[trace_id].append(
             TracePoint(x, y, trace_point_id, trace_id, SimpleNamespace(**kwargs))
         )

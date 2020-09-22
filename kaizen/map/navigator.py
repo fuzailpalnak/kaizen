@@ -243,13 +243,17 @@ class Navigator:
         filter_trace: bool = True,
         area_simplify: float = 0,
     ):
-        assert all(
-            v is not None
-            for v in [grid, traces, search_space_threshold, filter_trace, area_simplify]
-        ), (
+        assert None not in {
+            grid,
+            traces,
+            search_space_threshold,
+            filter_trace,
+            area_simplify,
+        }, (
             "Expected ['grid', 'trace', 'search_space_threshold', 'filter_trace', 'area_simplify'']"
             "to be not NONE"
         )
+
         assert isinstance(grid, Grid), (
             "Expected 'grid' to be instance of 'Grid'" "got %s",
             (type(grid),),
@@ -288,10 +292,13 @@ class Navigator:
         filter_trace: bool = True,
         area_simplify: float = 0,
     ):
-        assert all(
-            v is not None
-            for v in [grid, trace, search_space_threshold, filter_trace, area_simplify]
-        ), (
+        assert None not in {
+            grid,
+            trace,
+            search_space_threshold,
+            filter_trace,
+            area_simplify,
+        }, (
             "Expected ['grid', 'trace', 'search_space_threshold', 'filter_trace', 'area_simplify'']"
             "to be not NONE"
         )

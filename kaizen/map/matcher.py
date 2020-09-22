@@ -56,9 +56,13 @@ class CandidatesPerTracePoint(list):
         :param trace_information:  information of the trace point for which the candidate was obtained
         :return:
         """
-        assert all(
-            v is not None for v in [x, y, distance, road_information, trace_information]
-        ), "Expected ['x', 'y', 'candidate_id', 'distance', 'road_information', 'trace_information'] to be not None"
+        assert None not in {
+            x,
+            y,
+            distance,
+            road_information,
+            trace_information,
+        }, "Expected ['x', 'y', 'candidate_id', 'distance', 'road_information', 'trace_information'] to be not None"
 
         assert type(distance) is float, (
             "Expected type to be 'float'," "got %s",
@@ -71,7 +75,7 @@ class CandidatesPerTracePoint(list):
 
         assert hasattr(road_information.property, "u") and hasattr(
             road_information.property, "v"
-        ), "Expected road to have start node 'u' and end node 'v'" "for every edge"
+        ), ("Expected road to have start node 'u' and end node 'v'" "for every edge")
 
         if isinstance(trace_information, dict):
             trace_information = SimpleNamespace(**trace_information)
