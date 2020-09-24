@@ -10,6 +10,11 @@ inaccurate digitizing, snapping, or resource mismatch.
 This Library, presents, my view on tackling the aforementioned problem, caused during map making, using obstacle avoidance
 and map matching
 
+MapMatch            |  Conflict Resolver
+:-------------------------:|:-------------------------:
+![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![conflict](https://user-images.githubusercontent.com/24665570/94100989-92146080-fe4c-11ea-96bf-e9c08dd20e64.gif)
+ 
+
 ## Installation
     
     pip install git+https://github.com/fuzailpalnak/kaizen.git#egg=kaizen

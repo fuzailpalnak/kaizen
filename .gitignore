@@ -131,4 +131,5 @@ dmypy.json
 data/
 de.py
 df.py
+run1.py
 **/*.ipynb_checkpoints/
