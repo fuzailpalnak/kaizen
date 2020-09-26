@@ -158,7 +158,7 @@ class Grid:
             "key_release_event",
             lambda event: [exit(0) if event.key == "escape" else None],
         )
-        if random.uniform(0, 1) > 0.50:
+        if random.uniform(0, 1) > 0.90:
             plt.pause(0.001)
 
     @staticmethod

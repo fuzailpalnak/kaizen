@@ -15,6 +15,8 @@ from kaizen.utils.numerical import (
     diagonal_distance,
     euclidean_distance,
     manhattan_distance,
+    dot_between_vector,
+    cosine_similarity,
 )
 
 
@@ -217,6 +219,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0.0,
+        penalty: float = 0.5,
     ) -> list:
         """
 
@@ -230,6 +233,8 @@ class Navigator:
         this will remove such points which pass over obstacle zone
         :param trace:
         :param search_space_threshold:
+        :param penalty: between [0, 1], decides how much penalty to apply on the potential node,
+        which har away multiple goal node away, if value is '1' then maximum penalty.
         :return:
         """
 
@@ -242,6 +247,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0,
+        penalty: float = 0.5,
     ):
         assert all(
             v is not None
@@ -276,9 +282,19 @@ class Navigator:
             (area_simplify,),
         )
 
+        assert 0.0 <= penalty <= 1.0, (
+            "Expected 'penalty' to be in between '[0, 1]'" "got %s",
+            (penalty,),
+        )
+
         for _, trace in traces.items():
             yield self._path(
-                grid, trace, search_space_threshold, filter_trace, area_simplify
+                grid,
+                trace,
+                search_space_threshold,
+                filter_trace,
+                area_simplify,
+                penalty,
             )
 
     def path_finder_from_trace(
@@ -288,6 +304,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0,
+        penalty: float = 0.5,
     ):
         assert all(
             v is not None
@@ -323,8 +340,13 @@ class Navigator:
             (area_simplify,),
         )
 
+        assert 0.0 <= penalty <= 1.0, (
+            "Expected 'penalty' to be in between '[0, 1]'" "got %s",
+            (penalty,),
+        )
+
         return self._path(
-            grid, trace, search_space_threshold, filter_trace, area_simplify
+            grid, trace, search_space_threshold, filter_trace, area_simplify, penalty
         )
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
@@ -431,6 +453,7 @@ class AStar(Navigator):
         search_space_threshold=30,
         filter_trace: bool = True,
         area_simplify: float = 0.0,
+        penalty: float = 0.5,
     ) -> list:
         """
 
@@ -444,6 +467,8 @@ class AStar(Navigator):
         this will remove such points which pass over obstacle zone
         :param trace:
         :param search_space_threshold:
+        :param penalty: between [0, 1], decides how much penalty to apply on the potential node,
+        which har away multiple goal node away, if value is '1' then maximum penalty.
         :return:
         """
 
@@ -472,7 +497,12 @@ class AStar(Navigator):
                 open_set,
                 key=lambda o: open_set[o].cost
                 + self.calc_heuristic(
-                    n_goal, open_set[o], connectivity_meta=connectivity_meta
+                    n_goal,
+                    open_set[o],
+                    connectivity_meta=connectivity_meta,
+                    previous_goal=previous_goal,
+                    n_goal=n_goal,
+                    penalty=penalty,
                 ),
             )
 
@@ -587,8 +617,20 @@ class AStar(Navigator):
         :param kwargs:
         :return:
         """
+
         connectivity_meta = kwargs["connectivity_meta"]
+        previous_goal = kwargs["previous_goal"]
+        n_goal = kwargs["n_goal"]
+        penalize_missed_goal = kwargs["penalty"]
+
         weight = 1
+
+        if previous_goal != n_goal:
+            connectivity_nodes = list(connectivity_meta.keys())
+            weight = connectivity_nodes.index(goal) - connectivity_nodes.index(
+                potential_node.parent_node
+            )
+            weight = np.exp(weight * penalize_missed_goal)
 
         # LOOK FOR THE INTERMEDIATE GOAL OF THE CONSIDERED NODE AND COMPUTE COST ACCORDINGLY
         # [GET MY ACTUAL GOAL]

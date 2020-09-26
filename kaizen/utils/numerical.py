@@ -26,6 +26,18 @@ def angle_between_vector(v1: tuple, v2: tuple) -> float:
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
+def dot_between_vector(v1: tuple, v2: tuple) -> Any:
+    """
+    two vectors have either the same direction -  https://stackoverflow.com/a/13849249/71522
+    :param v1:
+    :param v2:
+    :return:
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+
+
 def get_point_after_certain_distance(
     start: tuple, end: tuple, d: float, dt: float
 ) -> Tuple[float, float]:
