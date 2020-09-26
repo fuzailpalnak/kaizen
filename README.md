@@ -40,7 +40,8 @@ Experience is pretty slim, for Windows Installation, I recommend using conda, fo
 1. [Map Matching Road Element with Line String](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithLineString.ipynb)
 2. [Map Matching Road Element with List of Point](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithPoint.ipynb)
 3. [Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolver.ipynb)
-4. [Solving Conflict Between Building and Road with matching the conflict with neighbouring data and finding 
+4. [Complex Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverComplex.ipynb)
+5. [Solving Conflict Between Building and Road with matching the conflict with neighbouring data and finding 
 associated reference points](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverWithMapMatching.ipynb)
 
 
