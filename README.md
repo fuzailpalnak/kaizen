@@ -12,7 +12,7 @@ using obstacle avoidance and map matching
 
 MapMatch            |  Conflict Resolver
 :-------------------------:|:-------------------------:
-![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![conflict](https://user-images.githubusercontent.com/24665570/94101750-23d09d80-fe4e-11ea-90fa-b080275cd6fc.gif)
+![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![complex_conflict](https://user-images.githubusercontent.com/24665570/94338794-a86c1900-0012-11eb-9fad-434a1d6e6749.gif)
 
  
 
