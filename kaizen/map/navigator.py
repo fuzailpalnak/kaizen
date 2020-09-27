@@ -219,7 +219,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0.0,
-        penalty: float = 0.5,
+        epsilon: float = 1,
     ) -> list:
         """
 
@@ -233,8 +233,7 @@ class Navigator:
         this will remove such points which pass over obstacle zone
         :param trace:
         :param search_space_threshold:
-        :param penalty: between [0, 1], decides how much penalty to apply on the potential node,
-        which har away multiple goal node away, if value is '1' then maximum penalty.
+        :param epsilon: controls, how much to weigh each goal node
         :return:
         """
 
@@ -247,7 +246,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0,
-        penalty: float = 0.5,
+        epsilon: float = 1,
     ):
         assert all(
             v is not None
@@ -282,9 +281,9 @@ class Navigator:
             (area_simplify,),
         )
 
-        assert 0.0 <= penalty <= 1.0, (
-            "Expected 'penalty' to be in between '[0, 1]'" "got %s",
-            (penalty,),
+        assert epsilon >= 0, (
+            "Expected 'epsilon' greater than equal to '1'" "got %s",
+            (epsilon,),
         )
 
         for _, trace in traces.items():
@@ -294,7 +293,7 @@ class Navigator:
                 search_space_threshold,
                 filter_trace,
                 area_simplify,
-                penalty,
+                epsilon,
             )
 
     def path_finder_from_trace(
@@ -304,7 +303,7 @@ class Navigator:
         search_space_threshold: float,
         filter_trace: bool = True,
         area_simplify: float = 0,
-        penalty: float = 0.5,
+        epsilon: float = 1,
     ):
         assert all(
             v is not None
@@ -340,13 +339,13 @@ class Navigator:
             (area_simplify,),
         )
 
-        assert 0.0 <= penalty <= 1.0, (
-            "Expected 'penalty' to be in between '[0, 1]'" "got %s",
-            (penalty,),
+        assert epsilon >= 0, (
+            "Expected 'epsilon' greater than equal to '1'" "got %s",
+            (epsilon,),
         )
 
         return self._path(
-            grid, trace, search_space_threshold, filter_trace, area_simplify, penalty
+            grid, trace, search_space_threshold, filter_trace, area_simplify, epsilon
         )
 
     def calc_heuristic(self, goal: GoalNode, potential_node: Node, **kwargs) -> float:
@@ -453,7 +452,7 @@ class AStar(Navigator):
         search_space_threshold=30,
         filter_trace: bool = True,
         area_simplify: float = 0.0,
-        penalty: float = 0.5,
+        epsilon: float = 1,
     ) -> list:
         """
 
@@ -467,8 +466,7 @@ class AStar(Navigator):
         this will remove such points which pass over obstacle zone
         :param trace:
         :param search_space_threshold:
-        :param penalty: between [0, 1], decides how much penalty to apply on the potential node,
-        which har away multiple goal node away, if value is '1' then maximum penalty.
+        :param epsilon: controls, how much to weigh each goal node
         :return:
         """
 
@@ -500,9 +498,7 @@ class AStar(Navigator):
                     n_goal,
                     open_set[o],
                     connectivity_meta=connectivity_meta,
-                    previous_goal=previous_goal,
-                    n_goal=n_goal,
-                    penalty=penalty,
+                    epsilon=epsilon,
                 ),
             )
 
@@ -619,18 +615,21 @@ class AStar(Navigator):
         """
 
         connectivity_meta = kwargs["connectivity_meta"]
-        previous_goal = kwargs["previous_goal"]
-        n_goal = kwargs["n_goal"]
-        penalize_missed_goal = kwargs["penalty"]
+        epsilon = kwargs["epsilon"]
 
-        weight = 1
+        connectivity_nodes = list(connectivity_meta.keys())
 
-        if previous_goal != n_goal:
-            connectivity_nodes = list(connectivity_meta.keys())
-            weight = connectivity_nodes.index(goal) - connectivity_nodes.index(
-                potential_node.parent_node
-            )
-            weight = np.exp(weight * penalize_missed_goal)
+        # https://stackoverflow.com/questions/44274729/a-search-advantages-of-dynamic-weighting
+        # http://theory.stanford.edu/~amitp/GameProgramming/Variations.html#dynamic-weighting
+        # INSTEAD OF DEPTH THE DYNAMIC WEIGHING IS DONE ON THE NUMBER OF INTERMEDIATE GOALS PASSED
+        # AS THE ALGORITHM STARTS TO REACH TO FINAL GOAL THE WEIGHT STARTS TO REDUCE
+        # THE EARLIER GOAL NODES ARE PENALIZED, THAN THE ONE WHICH ARE CLOSE TO THE FINAL GOAL NODE
+        weight = (
+            1
+            + epsilon
+            - (epsilon * connectivity_nodes.index(potential_node.parent_node))
+            / len(connectivity_nodes)
+        )
 
         # LOOK FOR THE INTERMEDIATE GOAL OF THE CONSIDERED NODE AND COMPUTE COST ACCORDINGLY
         # [GET MY ACTUAL GOAL]
