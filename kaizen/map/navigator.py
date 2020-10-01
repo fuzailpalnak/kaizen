@@ -15,8 +15,6 @@ from kaizen.utils.numerical import (
     diagonal_distance,
     euclidean_distance,
     manhattan_distance,
-    dot_between_vector,
-    cosine_similarity,
 )
 
 
@@ -668,7 +666,7 @@ class AStar(Navigator):
         elif py >= grid.max_y:
             return False
         # collision check
-        if grid.obstacle[node.x][node.y]:
+        if grid.map[node.x][node.y] == 255:
             return False
         return True
 

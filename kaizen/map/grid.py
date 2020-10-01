@@ -37,8 +37,12 @@ class Grid:
         self.resolution = resolution
         self.width, self.height = dimension
 
-        self._obstacle = np.zeros([self.width, self.height], np.uint8)
+        self._map = np.zeros([self.width, self.height], np.uint8)
         self._transform = transform
+
+    @property
+    def obstacle_pixel(self):
+        return 255
 
     @property
     def transform(self):
@@ -49,12 +53,12 @@ class Grid:
         return self.min_x, self.min_y, self.max_x, self.max_y
 
     @property
-    def obstacle(self):
-        return self._obstacle
+    def map(self):
+        return self._map
 
-    @obstacle.setter
-    def obstacle(self, value):
-        self._obstacle = value
+    @map.setter
+    def map(self, value):
+        self._map = value
 
     @property
     def dimension(self):
@@ -78,7 +82,7 @@ class Grid:
         :param x:
         :return:
         """
-        return self.obstacle[x][y]
+        return self.map[x][y]
 
     def pixel_pos(self, x, y):
         return pixel_position(x, y, self.transform)
@@ -254,7 +258,7 @@ class PixelGrid(Grid):
             " than the grid bounds"
         )
         width, height = self.dimension
-        extent = np.zeros([height, width], np.uint8)
+        obstacle = np.zeros([height, width], np.uint8)
 
         for idx, feature in obstacle_data_frame.iterrows():
             feature_geometry, feature_property = decompose_data_frame_row(feature)
@@ -270,16 +274,28 @@ class PixelGrid(Grid):
                 corner_points = np.array(corner_points[:-1], np.int32)
                 # https://stackoverflow.com/questions/14161331/creating-your-own-contour-in-opencv-using-python
                 cv2.drawContours(
-                    extent,
+                    obstacle,
                     [corner_points],
                     0,
-                    color=(255, 255, 255),
+                    color=(
+                        self.obstacle_pixel,
+                        self.obstacle_pixel,
+                        self.obstacle_pixel,
+                    ),
                     thickness=extend_boundary_pixel,
                 )
-                cv2.fillPoly(extent, pts=[corner_points], color=(255, 255, 255))
+                cv2.fillPoly(
+                    obstacle,
+                    pts=[corner_points],
+                    color=(
+                        self.obstacle_pixel,
+                        self.obstacle_pixel,
+                        self.obstacle_pixel,
+                    ),
+                )
 
-        self.obstacle = extent.T >= 255
+        self.map[np.where(obstacle.T == self.obstacle_pixel)] = self.obstacle_pixel
 
         if ANIMATION:
-            x, y = np.where(self.obstacle == True)
+            x, y = np.where(self.map == self.obstacle_pixel)
             plt.plot(x, y, ".k")
