@@ -10,6 +10,7 @@ from geopandas import GeoDataFrame
 from pandas import Series
 from rasterio.transform import rowcol, xy
 from shapely.geometry import mapping, box, Point, Polygon, LineString, MultiLineString
+from shapely.ops import polygonize, unary_union, linemerge
 
 
 def decompose_data_frame_row(row: Series):
@@ -228,3 +229,21 @@ def line_referencing_series_of_point_object(
         fraction, projected_point = line_referencing(line, point)
         referenced.append(projected_point)
     return referenced
+
+
+def split_polygon_with_line_string(line: LineString, polygon: Polygon):
+    assert type(line) == LineString, (
+        "Expected 'line' to be of type 'LineString'" "got %s",
+        (type(line),),
+    )
+    assert type(polygon) == Polygon, (
+        "Expected 'polygon' to be of type 'Polygon'" "got %s",
+        (type(polygon),),
+    )
+    return list(polygonize(unary_union(linemerge([polygon.boundary, line]))))
+
+
+def split_poly_coordinates_with_line_coordinates(
+    line: List[Union[Tuple, List]], polygon: [List[Union[Tuple, List]]]
+):
+    return split_polygon_with_line_string(LineString(line), Polygon(polygon))
