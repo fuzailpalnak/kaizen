@@ -20,8 +20,16 @@ MapMatch            |  Conflict Resolver
     
     pip install git+https://github.com/fuzailpalnak/kaizen.git#egg=kaizen
     
-## Additional Requirements
+## Requirements
 
+- *_Rtree - [installation](https://anaconda.org/conda-forge/rtree)_*  
+- *_Geopandas - [installation](https://anaconda.org/conda-forge/geopandas)_*
+- *_Rasterio - [installation](https://anaconda.org/conda-forge/rasterio)_*
+- *_GDAL - [installation](https://anaconda.org/conda-forge/gdal)_*
+- *_Fiona -  [installation](https://anaconda.org/conda-forge/fiona)_*
+- *_Shapely -  [installation](https://anaconda.org/conda-forge/shapely)_*
+
+ 
 The library uses [Rtree](https://rtree.readthedocs.io/en/latest/) which has a dependency on 
 [libspatialindex](https://libspatialindex.org/), 
 It is recommend to resolve the dependency through [conda](https://anaconda.org/conda-forge/libspatialindex)
