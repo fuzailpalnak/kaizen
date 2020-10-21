@@ -17,8 +17,20 @@ from kaizen.utils.numerical import compute_center_of_mass, decompose_matrix
 
 
 class Association:
+    """
+    Find association among source and target, i.e finding which point from target is the most likely point to which the
+    source should transform in to.
+
+    target can be thought of the ground truth, and source as input, and the task of association is to relate
+    which point from source is a true match to the target, so when ict is performed on the association, minimum error
+    is achieved.
+
+    """
+
     @staticmethod
-    def nearest_neighbour(target, source, **kwargs):
+    def nearest_neighbour(
+        target: np.ndarray, source: np.ndarray, **kwargs
+    ) -> Tuple[np.ndarray, np.ndarray]:
         _batch_size = kwargs["batch_size"]
         d = np.linalg.norm(
             np.repeat(source, target.shape[2], axis=2)
@@ -33,13 +45,28 @@ class Association:
 
 
 class IterativeClosetPoint:
+    """
+    The task ot ICT is to find a rotation and translation matrix, which, when applied on source gives minimum error
+    in simple terms transform source to target by some rotation (R) and translation (T)
+
+    Algorithm
+        a) Potentially SubSample Points
+        b) Determine Corresponding Points (ASSOCIATION)
+        c) Weight or reject pairs (FILTERING)
+        d) Compute rotation (R) and translation (T)
+        e) Apply rotation (R) and translation (T) on source
+        f) Compute error E(R, t)
+        g) While error decreased and error > error_tolerance
+            1) Repeat from (b)
+    """
+
     def __init__(self):
         self._homogeneous_matrix = None
 
         self._batch_size = None
         self._dimension = None
 
-    def _update_homogeneous_matrix(self, homogeneous_matrix):
+    def _update_homogeneous_matrix(self, homogeneous_matrix: np.ndarray):
         """
         :param homogeneous_matrix:
         :return:
@@ -87,7 +114,9 @@ class IterativeClosetPoint:
         return (u @ v).transpose((0, 2, 1))
 
     @staticmethod
-    def _translation(rotation: np.ndarray, source_mean, target_mean):
+    def _translation(
+        rotation: np.ndarray, source_mean: np.ndarray, target_mean: np.ndarray
+    ) -> np.ndarray:
         """
 
         :param rotation:
@@ -126,7 +155,7 @@ class IterativeClosetPoint:
         ]
 
     @staticmethod
-    def _cross_covariance_matrix(target: np.ndarray, source: np.ndarray):
+    def _cross_covariance_matrix(target: np.ndarray, source: np.ndarray) -> np.ndarray:
         """
 
         :param target:
@@ -226,8 +255,18 @@ class IterativeClosetPoint:
 
         return iteration_homogeneous_matrix
 
-    def ict(self, target, source, iteration, error_tolerance, association):
+    def _ict(
+        self,
+        target: np.ndarray,
+        source: np.ndarray,
+        iteration: int,
+        error_tolerance: float,
+        association,
+    ):
         """
+        target must be of shape [batch, dimension, number of points]
+        source must be of shape [batch, dimension, number of points]
+
         :param association:
         :param target:
         :param source:
@@ -298,15 +337,43 @@ class IterativeClosetPoint:
 
         return source, self._homogeneous_matrix
 
-    def batch(
+    def ict_with_batch(
         self,
         target: np.ndarray,
         source: np.ndarray,
         iteration: int,
         error_tolerance: float,
         association: str,
-    ):
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
+        when ict is to be performed on multiple inputs at once
+
+        this function is used when the input is of form
+            source = [
+                        [(s_b1_x1, s_b1_y1), (s_b1_x2, s_b1_y2), (s_b1_x3, s_b1_y3), ......., (s_b1_xn, s_b1_yn)]
+                        [(s_b2_x1, s_b2_y1), (s_b2_x2, s_b2_y2), (s_b2_x3, s_b2_y3), ......., (s_b2_xn, s_b2_yn)]
+                        .....
+                        .....
+                        [(s_bm_x1, s_bm_y1), (s_bm_x2, s_bm_y2), (s_bm_x3, s_bm_y3), ......., (s_bm_xn, s_bm_yn)]
+                    ]
+
+            target = [
+                        [(t_b1_x1, t_b1_y1), (t_b1_x2, t_b1_y2), (t_b1_x3, t_b1_y3), ......., (t_b1_xn, t_b1_yn)]
+                        [(t_b2_x1, t_b2_y1), (t_b2_x2, t_b2_y2), (t_b2_x3, t_b2_y3), ......., (t_b2_xn, t_b2_yn)]
+                        .....
+                        .....
+                        [(t_bm_x1, t_bm_y1), (t_bm_x2, t_bm_y2), (t_bm_x3, t_bm_y3), ......., (t_bm_xn, t_bm_yn)]
+                    ]
+
+            _, _ = ict_with_batch(np.array(target)swapaxes(-1, 1),np.array(source)swapaxes(-1, 1))
+
+            swap_axes is needed cause when list converted to array the shape is (m, n, dim) and the required shape is
+            (m, dim, n)
+
+
+        target must be of shape [batch, dimension, number of points]
+        source must be of shape [batch, dimension, number of points]
+
         :param association:
         :param target:
         :param source:
@@ -359,7 +426,7 @@ class IterativeClosetPoint:
             ),
         )
 
-        transformed_source, homogeneous_matrix = self.ict(
+        transformed_source, homogeneous_matrix = self._ict(
             target,
             source,
             iteration,
@@ -368,15 +435,26 @@ class IterativeClosetPoint:
         )
         return transformed_source, homogeneous_matrix
 
-    def single(
+    def ict_without_batch(
         self,
         target: np.ndarray,
         source: np.ndarray,
         iteration: int,
         error_tolerance: float,
         association: str,
-    ):
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
+        this function is used when the input is of form
+            source = [(s_x1, s_y1), (s_x2, s_y2), (s_x3, s_y3), ......., (s_xn, s_yn)]
+            target = [(t_x1, t_y1), (t_x2, t_y2), (t_x3, t_y3), ......., (t_xn, t_yn)]
+
+            _, _ = ict_without_batch(np.array(target)swapaxes(-1, 0),np.array(source)swapaxes(-1, 0))
+
+            swap_axes is needed cause when list converted to array the shape is (n, dim) and the required shape is
+            (dim, n)
+
+        target must be of shape [dimension, number of points]
+        source must be of shape [dimension, number of points]
 
         :param association:
         :param target:
@@ -421,7 +499,7 @@ class IterativeClosetPoint:
         self._batch_size = 1
         self._dimension = target.shape[0]
 
-        transformed_source, homogeneous_matrix = self.ict(
+        transformed_source, homogeneous_matrix = self._ict(
             target[np.newaxis, :, :],
             source[np.newaxis, :, :],
             iteration,
@@ -432,11 +510,16 @@ class IterativeClosetPoint:
 
 
 class SpatialICT(IterativeClosetPoint):
+    # TODO nearest neighbour is not a good association to minimize loss, look for a solution which is suitable for
+    #  spatial coordinate use case
+
     def __init__(self, grid: Union[PixelGrid, Grid]):
         super().__init__()
         self.pixel_grid = grid
 
-    def transform_spatial(self, input_list, homogeneous_matrix):
+    def transform_spatial(
+        self, input_list: list, homogeneous_matrix: np.ndarray
+    ) -> List:
         return self.pixel_grid.spatial_path_from_x_y(
             *zip(
                 *self._apply_transformation(
@@ -454,6 +537,31 @@ class SpatialICT(IterativeClosetPoint):
         source_trace: Traces,
         observation_error: int = 30,
     ) -> Tuple[List, List]:
+        """
+        This method finds the initial target association since the which source point belong to which target is unknown
+        Initial Target association is found by map matching the source with reference (target), so accurate initial
+        association is derived between source and target
+
+        :param referenced_data:
+        :param source_trace:
+        :param observation_error:
+        :return:
+        """
+
+        assert isinstance(source_trace, Traces), (
+            "Expected 'source' to be of instance 'Traces'" "got %s",
+            (type(source_trace),),
+        )
+
+        assert isinstance(referenced_data, RoadNetwork), (
+            "Expected 'target' to be of instance 'RoadNetwork'" "got %s",
+            (type(referenced_data),),
+        )
+
+        assert type(observation_error) is int, (
+            "Expected 'observation_error' to be of type 'int'" "got %s",
+            (type(observation_error),),
+        )
 
         matcher = Match(referenced_data, observation_error=observation_error)
 
@@ -480,8 +588,11 @@ class SpatialICT(IterativeClosetPoint):
         error_tolerance: float = 0.001,
         association: str = "nearest_neighbour",
         observation_error: int = 30,
-    ):
+    ) -> List:
         """
+        This method finds the initial target association since the which source point belong to which target is unknown
+        Initial Target association is found by map matching the source with reference (target), so accurate initial
+        association is derived between source and target
 
         :param association:
         :param error_tolerance:
@@ -491,11 +602,37 @@ class SpatialICT(IterativeClosetPoint):
         :param observation_error:
         :return:
         """
+
+        assert isinstance(source, Traces), (
+            "Expected 'source' to be of instance 'Traces'" "got %s",
+            (type(source),),
+        )
+
+        assert isinstance(target, RoadNetwork), (
+            "Expected 'target' to be of instance 'RoadNetwork'" "got %s",
+            (type(target),),
+        )
+
+        assert type(iteration) is int, (
+            "Expected 'iteration' to be of type 'int'" "got %s",
+            (type(iteration),),
+        )
+
+        assert type(error_tolerance) is float, (
+            "Expected 'error_tolerance' to be of type 'float'" "got %s",
+            (type(error_tolerance),),
+        )
+
+        assert type(observation_error) is int, (
+            "Expected 'observation_error' to be of type 'int'" "got %s",
+            (type(observation_error),),
+        )
+
         target_map_matched, source_map_matched = self._map_matched_target_association(
             target, source, observation_error=observation_error
         )
 
-        _, homogeneous_matrix = self.single(
+        _, homogeneous_matrix = self.ict_without_batch(
             np.array(
                 self.pixel_grid.pixel_path_from_x_y(
                     *zip(*list(itertools.chain(*target_map_matched)))
@@ -533,8 +670,11 @@ class SpatialICT(IterativeClosetPoint):
         error_tolerance: float = 0.001,
         association: str = "nearest_neighbour",
         observation_error: int = 30,
-    ):
+    ) -> List:
         """
+        This method finds the initial target association since the which source point belong to which target is unknown
+        Initial Target association is found by map matching the source with reference (target), so accurate initial
+        association is derived between source and target
 
         :param association:
         :param error_tolerance:
@@ -544,6 +684,21 @@ class SpatialICT(IterativeClosetPoint):
         :param observation_error:
         :return:
         """
+
+        assert type(iteration) is int, (
+            "Expected 'iteration' to be of type 'int'" "got %s",
+            (type(iteration),),
+        )
+
+        assert type(error_tolerance) is float, (
+            "Expected 'error_tolerance' to be of type 'float'" "got %s",
+            (type(error_tolerance),),
+        )
+
+        assert type(observation_error) is int, (
+            "Expected 'observation_error' to be of type 'int'" "got %s",
+            (type(observation_error),),
+        )
 
         if isinstance(source, GeoDataFrame) and isinstance(target, GeoDataFrame):
             return self.ict_map_matched_target(
@@ -583,7 +738,19 @@ class SpatialICT(IterativeClosetPoint):
         iteration: int = 100,
         error_tolerance: float = 0.001,
         association: str = "nearest_neighbour",
-    ):
+    ) -> List:
+        """
+        When the association between source and target are known
+
+        This will dissolve all relation and run as a single association, i.e point to point association
+
+        :param source:
+        :param target:
+        :param iteration:
+        :param error_tolerance:
+        :param association:
+        :return:
+        """
 
         assert type(target) == list and type(source) == list, (
             "Expected 'target' and 'source' to have type 'list'" "got %s and %s",
@@ -593,7 +760,17 @@ class SpatialICT(IterativeClosetPoint):
             ),
         )
 
-        _, homogeneous_matrix = self.single(
+        assert type(iteration) is int, (
+            "Expected 'iteration' to be of type 'int'" "got %s",
+            (type(iteration),),
+        )
+
+        assert type(error_tolerance) is float, (
+            "Expected 'error_tolerance' to be of type 'float'" "got %s",
+            (type(error_tolerance),),
+        )
+
+        _, homogeneous_matrix = self.ict_without_batch(
             np.array(
                 self.pixel_grid.pixel_path_from_x_y(
                     *zip(*list(itertools.chain(*target)))
