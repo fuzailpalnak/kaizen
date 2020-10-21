@@ -41,6 +41,9 @@ class Traces(defaultdict):
             trace_coordinates.append(self.trace_point_to_coordinates(trace))
         return trace_coordinates
 
+    def coordinates_from_id(self, trace_id):
+        return self.trace_point_to_coordinates(self[trace_id])
+
     def add(self, x, y, trace_point_id, trace_id, **kwargs):
         """
         EVERY TRACE MUST HAVE A UNIQUE TRACE_ID AND THE POINTS IN THE TRACE [TRACE POINTS] MUST HAVE A UNIQUE ID OF
