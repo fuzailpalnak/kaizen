@@ -10,11 +10,11 @@ inaccurate digitizing, snapping, or resource mismatch.
 This Library, presents, my view on tackling the aforementioned problem, caused during map making, addressed 
 using obstacle avoidance and map matching
 
-MapMatch            |  Conflict Resolver
-:-------------------------:|:-------------------------:
-![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![complex_conflict](https://user-images.githubusercontent.com/24665570/94338794-a86c1900-0012-11eb-9fad-434a1d6e6749.gif)
+MapMatch            |  Conflict Resolver |  ICT
+:-------------------------:|:-------------------------:|:-------------------------:
+![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![complex_conflict](https://user-images.githubusercontent.com/24665570/94338794-a86c1900-0012-11eb-9fad-434a1d6e6749.gif)  |  ![ict](https://user-images.githubusercontent.com/24665570/96708811-62a73400-13b7-11eb-970c-a4d8b96f9764.gif)
 
- 
+
 
 ## Installation
     
@@ -43,14 +43,21 @@ It is recommend to resolve the dependency through [conda](https://anaconda.org/c
 
 Experience is pretty slim, for Windows Installation, I recommend using conda, for trouble free installation. 
 
-## Examples
+## MapMatch 
+- Examples
+    1. [Map Matching Road Element with Line String](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithLineString.ipynb)
+    2. [Map Matching Road Element with List of Point](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithPoint.ipynb)
 
-1. [Map Matching Road Element with Line String](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithLineString.ipynb)
-2. [Map Matching Road Element with List of Point](https://github.com/fuzailpalnak/kaizen/blob/master/examples/MapMatchingWithPoint.ipynb)
-3. [Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolver.ipynb)
-4. [Complex Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverComplex.ipynb)
-5. [Solving Conflict Between Building and Road with matching the conflict with neighbouring data and finding 
-associated reference points](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverWithMapMatching.ipynb)
+## Conflict Resolver
+- Examples 
+    1. [Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolver.ipynb)
+    2. [Complex Solving Conflict Between Building and Road without additional Reference](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverComplex.ipynb)
+    3. [Solving Conflict Between Building and Road with matching the conflict with neighbouring data and finding 
+    associated reference points](https://github.com/fuzailpalnak/kaizen/blob/master/examples/ConflictResolverWithMapMatching.ipynb)
+
+## ICT
+- Example
+    1. [Spatial ICT](https://github.com/fuzailpalnak/kaizen/blob/master/examples/Spatial_ICT.ipynb)
 
 
 ## References
