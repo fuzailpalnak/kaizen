@@ -183,3 +183,38 @@ def manhattan_distance(p1: tuple, p2: tuple) -> float:
     :return:
     """
     return abs(p2[0] - p1[0]) + abs(p2[1] - p1[1])
+
+
+def compute_center_of_mass(input_array, axis: int = 1):
+    """
+    Compute center of mass
+
+    :param axis:
+    :param input_array: (dim x N)
+    :return:
+    """
+    return np.mean(input_array, axis=axis)
+
+
+def new_mass(mean, input_array):
+    """
+    Subtract the corresponding center of mass from every point
+
+    new_mass = (dim x N) - (dim x 1)
+
+    :param mean:
+    :param input_array:
+    :return:
+    """
+
+    return input_array - mean[:, np.newaxis]
+
+
+def decompose_matrix(matrix):
+    """
+
+    :param matrix:
+    :return:
+    """
+
+    return np.linalg.svd(matrix)

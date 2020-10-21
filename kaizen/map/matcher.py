@@ -71,7 +71,7 @@ class CandidatesPerTracePoint(list):
 
         assert hasattr(road_information.property, "u") and hasattr(
             road_information.property, "v"
-        ), "Expected road to have start node 'u' and end node 'v'" "for every edge"
+        ), ("Expected road to have start node 'u' and end node 'v'" "for every edge")
 
         if isinstance(trace_information, dict):
             trace_information = SimpleNamespace(**trace_information)
@@ -472,13 +472,18 @@ class Match:
         connected_shape, connected_info = self._get_connected_road_geometry(
             matched_sequence
         )
+        if len(connected_shape) > 0:
+            referenced_poi = line_referencing_series_of_coordinates(
+                MultiLineString(connected_shape),
+                Traces.trace_point_to_coordinates(trace),
+            )
+        else:
+            referenced_poi = list()
+
         return (
             connected_shape,
             connected_info,
-            line_referencing_series_of_coordinates(
-                MultiLineString(connected_shape),
-                Traces.trace_point_to_coordinates(trace),
-            ),
+            referenced_poi,
         )
 
     def match_trace(
