@@ -10,11 +10,20 @@ inaccurate digitizing, snapping, or resource mismatch.
 This Library, presents, my view on tackling the aforementioned problem, caused during map making, addressed 
 using obstacle avoidance and map matching
 
-MapMatch            |  Conflict Resolver            |  ICT
-:-------------------------:|:-------------------------:|:-------------------------:
-![mapmatch](https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif)   |  ![complex_conflict](https://user-images.githubusercontent.com/24665570/94338794-a86c1900-0012-11eb-9fad-434a1d6e6749.gif)  |  ![ict](https://user-images.githubusercontent.com/24665570/96708811-62a73400-13b7-11eb-970c-a4d8b96f9764.gif)
+<table>
+  <tr>
+    <td>MapMatch</td>
+    <td>Conflict Resolver</td>
+    <td>ICT</td>
 
+  </tr>
+  <tr>
+    <td><img src="https://user-images.githubusercontent.com/24665570/94099696-2f6d9580-fe49-11ea-95f4-c5b53443f4a6.gif" width=500 height=100></td>
+    <td><img src="https://user-images.githubusercontent.com/24665570/94338794-a86c1900-0012-11eb-9fad-434a1d6e6749.gif" width=500 height=100></td>
+    <td><img src="https://user-images.githubusercontent.com/24665570/96708811-62a73400-13b7-11eb-970c-a4d8b96f9764.gif" width=500 height=100></td>
 
+  </tr>
+ </table>
 
 ## Installation
     
