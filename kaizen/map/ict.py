@@ -5,6 +5,7 @@ from typing import Union, List, Tuple
 import numpy as np
 from geopandas import GeoDataFrame
 
+from kaizen.map import refresh_print
 from kaizen.map.grid import PixelGrid, Grid
 from kaizen.map.matcher import Match
 from kaizen.map.road import road_network_from_data_frame, RoadNetwork
@@ -325,7 +326,11 @@ class IterativeClosetPoint:
             source = self._apply_transformation(source, iteration_homogeneous_matrix)
             self._update_homogeneous_matrix(iteration_homogeneous_matrix)
 
-            print(current_mean_batch_error)
+            refresh_print(
+                f"Iteration {i},"
+                f" Loss {current_mean_batch_error},"
+                f" Running Tolerance {np.abs(previous_mean_batch_error - current_mean_batch_error)}"
+            )
             if (
                 np.abs(previous_mean_batch_error - current_mean_batch_error)
                 < error_tolerance
