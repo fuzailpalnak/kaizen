@@ -6,7 +6,7 @@ import rtree
 from geopandas import GeoDataFrame
 from shapely.geometry import shape, Polygon
 
-from kaizen.utils.gis import (
+from kaizen_mapping.utils.gis import (
     geom_check,
     decompose_data_frame_row,
     compute_diagonal_distance_of_extent,

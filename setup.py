@@ -15,7 +15,7 @@ install_requires = [
 ]
 
 setup(
-    name="kaizen",
+    name="kaizen_mapping",
     version="0.0.1",
     author="Fuzail Palnak",
     author_email="fuzailpalnak@gmail.com",
@@ -27,7 +27,7 @@ setup(
     python_requires="~=3.3",
     install_requires=install_requires,
     keywords=[
-        "GIS, Map Matching, Road Network, Building Footprint, Polygon, MultiPolygon, Geometry"
+        "GIS, Map Matching, Road Network, Building Footprint, Polygon, MultiPolygon, Geometry, Iterative Closet Point"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

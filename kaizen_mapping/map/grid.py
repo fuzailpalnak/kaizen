@@ -9,8 +9,8 @@ from affine import Affine
 from geopandas import GeoDataFrame
 from shapely.geometry import Polygon, mapping
 
-from kaizen.map.trace import TracePoint
-from kaizen.utils.gis import (
+from kaizen_mapping.map.trace import TracePoint
+from kaizen_mapping.utils.gis import (
     geom_check,
     decompose_data_frame_row,
     generate_affine,
