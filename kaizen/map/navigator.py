@@ -4,7 +4,7 @@ from typing import Tuple, List, Union
 
 import numpy as np
 
-
+from kaizen.map import refresh_print
 from kaizen.map.grid import PixelGrid, Grid
 from kaizen.map.robot import Robot
 from kaizen.map.trace import TracePoint, Traces
@@ -484,7 +484,14 @@ class AStar(Navigator):
 
         previous_goal = n_goal
 
+        goal_completed_count = 0
+
         while 1:
+            refresh_print(
+                f"Navigator Progress: Finding Path for GOAL {n_goal.x, n_goal.y},"
+                f" GOAL COUNT - {goal_completed_count}/{len(goal_collection) + goal_completed_count}"
+            )
+
             if len(open_set) == 0:
                 print("Couldn't Reach to Goal")
                 break
@@ -523,6 +530,14 @@ class AStar(Navigator):
                     # FINAL GOAL FOUND
                     n_goal.parent_index = current.parent_index
                     n_goal.cost = current.cost
+
+                    # REMOVE THE GOAL FROM COLLECTION AS IT HAS BEEN FOUND
+                    del goal_collection[0]
+
+                    refresh_print(
+                        f"Navigator Progress: Found GOAL {n_goal.x, n_goal.y},"
+                        f" GOAL COUNT - {goal_completed_count}/{len(goal_collection) + goal_completed_count}"
+                    )
                     break
                 else:
                     # INTERMEDIATE GOAL FOUND
@@ -553,6 +568,11 @@ class AStar(Navigator):
                             self.navigate_space + search_space_threshold
                         )
 
+                    goal_completed_count += 1
+                    refresh_print(
+                        f"Navigator Progress: Found GOAL {n_goal.x, n_goal.y},"
+                        f" GOAL COUNT - {goal_completed_count}/{len(goal_collection) + goal_completed_count}"
+                    )
             # REMOVE VISITED FROM OPEN SET
             del open_set[grid_id]
 
