@@ -6,7 +6,7 @@ from typing import Any, List
 
 from geopandas import GeoDataFrame
 
-from kaizen.utils.gis import (
+from kaizen_mapping.utils.gis import (
     geom_check,
     decompose_data_frame_row,
     supported_crs,

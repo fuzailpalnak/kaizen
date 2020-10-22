@@ -27,7 +27,7 @@ using obstacle avoidance and map matching
 
 ## Installation
     
-    pip install git+https://github.com/fuzailpalnak/kaizen.git#egg=kaizen
+    pip install kaizen-mapping
     
 ## Requirements
 

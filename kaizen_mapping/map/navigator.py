@@ -4,12 +4,12 @@ from typing import Tuple, List, Union
 
 import numpy as np
 
-from kaizen.map import refresh_print
-from kaizen.map.grid import PixelGrid, Grid
-from kaizen.map.robot import Robot
-from kaizen.map.trace import TracePoint, Traces
-from kaizen.utils.gis import line_simplify
-from kaizen.utils.numerical import (
+from kaizen_mapping.map import refresh_print
+from kaizen_mapping.map.grid import PixelGrid, Grid
+from kaizen_mapping.map.robot import Robot
+from kaizen_mapping.map.trace import TracePoint, Traces
+from kaizen_mapping.utils.gis import line_simplify
+from kaizen_mapping.utils.numerical import (
     angle_between_vector,
     vector,
     diagonal_distance,

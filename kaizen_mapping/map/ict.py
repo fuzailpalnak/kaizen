@@ -5,16 +5,16 @@ from typing import Union, List, Tuple
 import numpy as np
 from geopandas import GeoDataFrame
 
-from kaizen.map import refresh_print
-from kaizen.map.grid import PixelGrid, Grid
-from kaizen.map.matcher import Match
-from kaizen.map.road import road_network_from_data_frame, RoadNetwork
-from kaizen.map.trace import (
+from kaizen_mapping.map import refresh_print
+from kaizen_mapping.map.grid import PixelGrid, Grid
+from kaizen_mapping.map.matcher import Match
+from kaizen_mapping.map.road import road_network_from_data_frame, RoadNetwork
+from kaizen_mapping.map.trace import (
     traces_from_data_frame,
     Traces,
 )
-from kaizen.utils.gis import read_data_frame
-from kaizen.utils.numerical import compute_center_of_mass, decompose_matrix
+from kaizen_mapping.utils.gis import read_data_frame
+from kaizen_mapping.utils.numerical import compute_center_of_mass, decompose_matrix
 
 
 class Association:

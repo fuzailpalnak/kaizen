@@ -11,10 +11,13 @@ from shapely.geometry import Point, mapping, shape, LineString, MultiLineString
 from scipy import spatial
 from scipy import stats
 
-from kaizen.map import refresh_print
-from kaizen.map.road import RoadNetwork, road_network_from_path
-from kaizen.map.trace import Traces, TracePoint
-from kaizen.utils.gis import line_referencing, line_referencing_series_of_coordinates
+from kaizen_mapping.map import refresh_print
+from kaizen_mapping.map.road import RoadNetwork, road_network_from_path
+from kaizen_mapping.map.trace import Traces, TracePoint
+from kaizen_mapping.utils.gis import (
+    line_referencing,
+    line_referencing_series_of_coordinates,
+)
 
 
 @dataclass
