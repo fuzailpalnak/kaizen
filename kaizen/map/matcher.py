@@ -11,6 +11,7 @@ from shapely.geometry import Point, mapping, shape, LineString, MultiLineString
 from scipy import spatial
 from scipy import stats
 
+from kaizen.map import refresh_print
 from kaizen.map.road import RoadNetwork, road_network_from_path
 from kaizen.map.trace import Traces, TracePoint
 from kaizen.utils.gis import line_referencing, line_referencing_series_of_coordinates
@@ -455,7 +456,10 @@ class Match:
     ) -> Tuple[List[LineString], Union[defaultdict, OrderedDict], List[Point]]:
         candidates = Candidates()
 
-        for trace_point in trace:
+        for iterator, trace_point in enumerate(trace):
+            refresh_print(
+                f"Map Matcher Progress: TraceID {trace_id}, Traces - {iterator+1}/{len(trace)}"
+            )
             # [REFERENCE IN PAPER]
             # SECTION 5.1 Candidate Preparation
             # FOR EVERY TRACE POINT, PROJECT THE POINT ON TO ROAD SEGMENTS WITHIN CERTAIN BUFFER AND NOTE THE
@@ -463,7 +467,6 @@ class Match:
             # EACH TRACE_REC CAN HAVE MULTIPLE CANDIDATES
 
             candidates_per_trace_point = self._get_candidates(trace_point)
-
             if len(candidates_per_trace_point) != 0:
                 candidates.add(trace_point.trace_point_id, candidates_per_trace_point)
 
