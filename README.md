@@ -34,7 +34,7 @@ using obstacle avoidance and map matching
 - *_Rtree - [installation](https://anaconda.org/conda-forge/rtree)_*  
 - *_Geopandas - [installation](https://anaconda.org/conda-forge/geopandas)_*
 - *_Rasterio - [installation](https://anaconda.org/conda-forge/rasterio)_*
-- *_GDAL - [installation](https://anaconda.org/conda-forge/gdal)_*
+- *_GDAL 2.4.4 - [installation](https://anaconda.org/conda-forge/gdal)_*
 - *_Fiona -  [installation](https://anaconda.org/conda-forge/fiona)_*
 - *_Shapely -  [installation](https://anaconda.org/conda-forge/shapely)_*
 
