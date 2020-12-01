@@ -2,6 +2,7 @@
 ![Licence](https://img.shields.io/github/license/fuzailpalnak/kaizen)
 ![Python](https://img.shields.io/badge/python-v3.6+-blue.svg)
 ![Contributions welcome](https://img.shields.io/badge/contributions-welcome-orange.svg)
+![Downloads](https://pepy.tech/badge/kaizen-mapping)
 
 A Library build with two propose, to *map match* road elements either with *probe trace or road elements from different
 source* and help, tackle the problem of *roads and building intersecting or overlapping*, which are results of
