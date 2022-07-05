@@ -55,6 +55,10 @@ It is recommend to resolve the dependency through [conda](https://anaconda.org/c
 
 Experience is pretty slim, for Windows Installation, I recommend using conda, for trouble free installation. 
 
+## Demo
+
+Data for running the demo examples can be downloaded from [here](https://github.com/fuzailpalnak/kaizen/releases/download/0.0.1/data.zip)
+
 ## MapMatch 
 
 Examples
